@@ -12,7 +12,8 @@ Execute after every modification before declaring work complete:
 
 ## Architecture Layout
 
-- `crates/`: Application Track & Shared Core
+- `application/`: Tauri 2 Desktop Application (React, Vite, Tailwind UI + Rust Tauri commands)
+- `crates/`: Application Track & Client Core
   - `frostfire-proto`: Protocol buffer contracts (`AgentTunnelService.OpenTunnel`). Single source of truth.
   - `frostfire-tunnel`: Outbound TLS gRPC connection manager & in-process mock gateway.
   - `frostfire-exec`: Virtual PTY multiplexer (`portable-pty`), canonical path jail, atomic diff applicator, git worktree manager.
@@ -20,9 +21,8 @@ Execute after every modification before declaring work complete:
   - `frostfire-mcp`: Supervised stdio/SSE child processes with tool allowlists.
   - `frostfire-daemon`: Local background host service.
   - `frostfire-cli`: Unified CLI entrypoint (`dev-server`, `daemon`, `doctor`, `audit`).
-- `services/`: Cloud Track
-  - `gateway`: Edge ingress gateway routing agent tunnels.
-  - `swarm-orchestrator`: 4-tier swarm state machine & versioned Blackboard store (`blackboard://...`).
+  - `frostfire-core`: Client models, local DAG, and Blackboard client.
+  - `frostfire-engine`: Client LLM provider routing, security filters, and local turn engine.
 
 ## Invariants
 

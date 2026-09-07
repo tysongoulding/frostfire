@@ -11,9 +11,6 @@ members = [
     "crates/frostfire-core",
     "crates/frostfire-engine",
     "application/src-tauri",
-    "services/swarm-orchestrator",
-    "cloud/gateway",
-    "cloud/agent",
 ]
 
 [workspace.package]
@@ -33,7 +30,6 @@ frostfire-mcp = { path = "crates/frostfire-mcp" }
 frostfire-daemon = { path = "crates/frostfire-daemon" }
 frostfire-core = { path = "crates/frostfire-core" }
 frostfire-engine = { path = "crates/frostfire-engine" }
-frostfire-orchestrator = { path = "services/swarm-orchestrator" }
 
 # Async & Networking
 tokio = { version = "1.43", features = ["full"] }

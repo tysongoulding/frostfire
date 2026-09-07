@@ -16,7 +16,7 @@ frostfire-exec = { workspace = true }
 frostfire-security = { workspace = true }
 frostfire-mcp = { workspace = true }
 frostfire-daemon = { workspace = true }
-frostfire-orchestrator = { workspace = true }
+frostfire-engine = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }

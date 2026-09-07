@@ -1,9 +1,12 @@
+pub mod gemini;
 pub mod providers;
 pub mod resilience;
 pub mod routing;
 pub mod security;
 pub mod tools;
+pub mod turn;
 
+pub use gemini::{ChatMessage, GeminiClient, GeminiConfig, GeminiToolCall, GeminiTurnResult};
 pub use providers::{ProviderCredentials, ProviderRegistry, ProviderType};
 pub use resilience::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError, CircuitState};
 pub use routing::{ModelRoute, ModelRouter, ModelTier, TaskProfile, TaskType};
@@ -13,3 +16,4 @@ pub use tools::{
     McpServerConfig, SecurityFilter, SprintPhase, ToolApprovalRequest, ToolDefinition, ToolError,
     WorkspaceJail,
 };
+pub use turn::{AgentTurnEngine, TurnExecutionPlan};

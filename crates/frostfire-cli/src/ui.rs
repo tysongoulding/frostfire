@@ -368,7 +368,7 @@ async fn handle_connection(
                 }
             }
 
-            let key_opt = frostfire_orchestrator::GeminiClient::resolve_api_key();
+            let key_opt = frostfire_engine::GeminiClient::resolve_api_key();
             let model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3.8-flash".to_string());
             let resp = match key_opt {
                 Some(key) if !key.is_empty() => {
@@ -583,15 +583,15 @@ async fn execute_turn_via_tunnel(
             info!("Cloud Gateway offline at {}, evaluating prompt directly with Gemini Turn Engine", gateway_url);
             let gemini = if let Some(ref key) = req.api_key {
                 if !key.trim().is_empty() {
-                    frostfire_orchestrator::GeminiClient::with_api_key(key.trim(), req.model.clone())
+                    frostfire_engine::GeminiClient::with_api_key(key.trim(), req.model.clone())
                 } else {
-                    frostfire_orchestrator::GeminiClient::from_env()
+                    frostfire_engine::GeminiClient::from_env()
                 }
             } else {
-                frostfire_orchestrator::GeminiClient::from_env()
+                frostfire_engine::GeminiClient::from_env()
             };
 
-            let engine = frostfire_orchestrator::AgentTurnEngine::new(Arc::new(gemini));
+            let engine = frostfire_engine::AgentTurnEngine::new(Arc::new(gemini));
             let plan = engine.process_prompt(&prompt, "local-ui-agent").await?;
 
             agent_message = plan.agent_message.content;
