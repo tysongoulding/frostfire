@@ -1,0 +1,68 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/frostfire-proto",
+    "crates/frostfire-tunnel",
+    "crates/frostfire-exec",
+    "crates/frostfire-security",
+    "crates/frostfire-mcp",
+    "crates/frostfire-daemon",
+    "crates/frostfire-core",
+    "crates/frostfire-engine",
+    "services/swarm-orchestrator",
+    "cloud/gateway",
+    "cloud/agent",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Frostfire Team"]
+license = "Proprietary"
+repository = "https://github.com/tysongoulding/frostfire-cloud"
+
+[workspace.dependencies]
+# Internal workspace crates
+frostfire-proto = { path = "crates/frostfire-proto" }
+frostfire-tunnel = { path = "crates/frostfire-tunnel" }
+frostfire-exec = { path = "crates/frostfire-exec" }
+frostfire-security = { path = "crates/frostfire-security" }
+frostfire-mcp = { path = "crates/frostfire-mcp" }
+frostfire-daemon = { path = "crates/frostfire-daemon" }
+frostfire-core = { path = "crates/frostfire-core" }
+frostfire-engine = { path = "crates/frostfire-engine" }
+frostfire-orchestrator = { path = "services/swarm-orchestrator" }
+
+# Async & Networking
+tokio = { version = "1.43", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+tonic = "0.12"
+prost = "0.13"
+prost-types = "0.13"
+futures = "0.3"
+async-trait = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# Serialization & Data
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+uuid = { version = "1.13", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Terminal & PTY
+portable-pty = "0.8"
+
+# Security, Hashing & Storage
+rusqlite = { version = "0.33", features = ["bundled", "chrono"] }
+sha2 = "0.10"
+hex = "0.4"
+directories-next = "2.0"
+
+# CLI & Observability
+clap = { version = "4.5", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "2.0"
+anyhow = "1.0"
+similar = "2.6"

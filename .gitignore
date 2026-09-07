@@ -1,0 +1,21 @@
+/target
+**/*.rs.bk
+Cargo.lock
+
+# Frostfire runtime state
+.frostfire/
+*.db
+*.db-journal
+*.log
+
+# Environment & Secrets
+.env
+.env.*
+!*.example
+credentials.json
+token.json
+
+# Frontend build artifacts
+node_modules/
+dist/
+target/

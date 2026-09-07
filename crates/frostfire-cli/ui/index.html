@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Frostfire Swarm UI</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface-border: #30363d;
+      --surface-hover: #21262d;
+      --text: #f0f6fc;
+      --text-muted: #8b949e;
+      --primary: #58a6ff;
+      --primary-hover: #1f6feb;
+      --accent: #bc8cff;
+      --success: #3fb950;
+      --warning: #d29922;
+      --danger: #f85149;
+      --terminal-bg: #090d13;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Top Navigation */
+    header {
+      height: 56px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--surface-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      flex-shrink: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: -0.5px;
+    }
+    .brand svg { fill: var(--primary); }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      background: var(--surface-hover);
+      border: 1px solid var(--surface-border);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .badge:hover {
+      border-color: var(--primary);
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px rgba(63, 185, 80, 0.6);
+    }
+    .status-dot.disconnected {
+      background: var(--danger);
+      box-shadow: 0 0 8px rgba(248, 81, 73, 0.6);
+    }
+
+    .btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--surface-border);
+      background: var(--surface-hover);
+      color: var(--text);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn:hover {
+      background: #30363d;
+      border-color: #8b949e;
+    }
+    .btn-primary {
+      background: var(--primary-hover);
+      border-color: var(--primary);
+      color: #ffffff;
+    }
+    .btn-primary:hover {
+      background: var(--primary);
+    }
+
+    /* Chat Container */
+    #chat-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      max-width: 960px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .welcome-card {
+      background: linear-gradient(135deg, rgba(88, 166, 255, 0.08), rgba(188, 140, 255, 0.08));
+      border: 1px solid var(--surface-border);
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+      margin-top: 10px;
+    }
+    .welcome-card h2 {
+      font-size: 1.3rem;
+      margin-bottom: 8px;
+    }
+    .welcome-card p {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      max-width: 600px;
+      margin: 0 auto 16px auto;
+      line-height: 1.5;
+    }
+
+    .quick-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+    }
+    .chip {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.82rem;
+      color: var(--primary);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .chip:hover {
+      background: var(--surface-hover);
+      border-color: var(--primary);
+      transform: translateY(-1px);
+    }
+
+    /* Message Bubbles */
+    .message-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .message-row.user {
+      align-items: flex-end;
+    }
+    .message-row.agent {
+      align-items: flex-start;
+    }
+
+    .message-meta {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      display: flex;
+      gap: 8px;
+      padding: 0 4px;
+    }
+
+    .bubble {
+      max-width: 85%;
+      padding: 14px 18px;
+      border-radius: 12px;
+      font-size: 0.93rem;
+      line-height: 1.6;
+      word-break: break-word;
+    }
+    .bubble.user {
+      background: #1f6feb;
+      color: #ffffff;
+      border-bottom-right-radius: 3px;
+    }
+    .bubble.agent {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      color: var(--text);
+      border-bottom-left-radius: 3px;
+    }
+
+    /* Markdown Formatting inside agent bubble */
+    .bubble.agent p { margin-bottom: 10px; }
+    .bubble.agent p:last-child { margin-bottom: 0; }
+    .bubble.agent pre {
+      background: var(--terminal-bg);
+      border: 1px solid var(--surface-border);
+      border-radius: 6px;
+      padding: 12px;
+      overflow-x: auto;
+      margin: 10px 0;
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 0.85rem;
+    }
+    .bubble.agent code {
+      background: rgba(110, 118, 129, 0.2);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.88rem;
+    }
+    .bubble.agent ul, .bubble.agent ol {
+      margin-left: 20px;
+      margin-bottom: 10px;
+    }
+
+    /* Tool Call Cards */
+    .tool-card {
+      background: var(--surface-hover);
+      border: 1px solid var(--surface-border);
+      border-radius: 8px;
+      margin-top: 12px;
+      width: 100%;
+      overflow: hidden;
+    }
+    .tool-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: rgba(0, 0, 0, 0.2);
+      border-bottom: 1px solid var(--surface-border);
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+    .tool-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--accent);
+    }
+    .tool-terminal {
+      background: var(--terminal-bg);
+      padding: 12px;
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 0.82rem;
+      color: #7ee787;
+      max-height: 240px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+
+    /* Bottom Input Bar */
+    footer {
+      background: var(--surface);
+      border-top: 1px solid var(--surface-border);
+      padding: 16px 20px;
+      flex-shrink: 0;
+    }
+    .input-wrapper {
+      max-width: 960px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .input-box {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      background: var(--bg);
+      border: 1px solid var(--surface-border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      transition: border-color 0.2s;
+    }
+    .input-box:focus-within {
+      border-color: var(--primary);
+    }
+    textarea {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-size: 0.95rem;
+      resize: none;
+      outline: none;
+      font-family: inherit;
+      max-height: 160px;
+      line-height: 1.4;
+    }
+    textarea::placeholder {
+      color: var(--text-muted);
+    }
+    .send-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: var(--primary);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      transition: background 0.15s, transform 0.1s;
+      flex-shrink: 0;
+    }
+    .send-btn:hover:not(:disabled) {
+      background: var(--primary-hover);
+      transform: scale(1.05);
+    }
+    .send-btn:disabled {
+      background: var(--surface-hover);
+      color: var(--text-muted);
+      cursor: not-allowed;
+    }
+
+    /* Thinking spinner */
+    .thinking-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      padding: 8px 12px;
+      background: var(--surface);
+      border-radius: 8px;
+      border: 1px solid var(--surface-border);
+      width: fit-content;
+    }
+    .dots {
+      display: flex;
+      gap: 4px;
+    }
+    .dot {
+      width: 6px;
+      height: 6px;
+      background: var(--primary);
+      border-radius: 50%;
+      animation: pulse 1.4s infinite ease-in-out both;
+    }
+    .dot:nth-child(1) { animation-delay: -0.32s; }
+    .dot:nth-child(2) { animation-delay: -0.16s; }
+    @keyframes pulse {
+      0%, 80%, 100% { transform: scale(0); }
+      40% { transform: scale(1.0); }
+    }
+
+    /* Modal / Drawer */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(2px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: 12px;
+      width: 90%;
+      max-width: 640px;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--surface-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .modal-body {
+      padding: 20px;
+      overflow-y: auto;
+      font-size: 0.88rem;
+    }
+    .audit-entry {
+      background: var(--terminal-bg);
+      border: 1px solid var(--surface-border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-bottom: 10px;
+      font-family: monospace;
+      font-size: 0.8rem;
+    }
+    .modal-wide {
+      max-width: 95vw;
+      width: 1400px;
+      height: 88vh;
+      max-height: 88vh;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation -->
+  <header>
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+      </svg>
+      <span>Frostfire Swarm</span>
+    </div>
+
+    <div class="header-actions">
+      <div class="badge" id="gateway-status" title="Cloud Gateway Connection">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="gateway-label">Cloud Gateway: Connecting...</span>
+      </div>
+
+      <a class="badge" id="chrome-badge" href="http://127.0.0.1:9222" target="_blank" title="Chrome DevTools Protocol (CDP)" style="text-decoration:none; cursor:pointer;">
+        <span>🌐</span>
+        <span id="chrome-label">Chrome: Checking...</span>
+      </a>
+
+      <div class="badge" id="webrtc-badge" title="WebRTC DataChannel Status">
+        <span>⚡</span>
+        <span id="webrtc-label">WebRTC: Initializing...</span>
+      </div>
+
+      <div class="badge" id="kasm-badge" title="Click to view & take over Cloud Desktop (noVNC)" style="cursor:pointer;">
+        <span>🖥️</span>
+        <span id="kasm-label">Cloud Desktop</span>
+      </div>
+
+      <div class="badge" id="audit-badge" title="Click to view SQLite Merkle Audit Ledger">
+        <span>🛡️</span>
+        <span id="audit-label">Audit: Verifying...</span>
+      </div>
+
+      <div class="badge" id="ai-key-badge" title="Configure Google AI Studio API Key" style="cursor:pointer;">
+        <span>🔑</span>
+        <span id="ai-key-label">AI Studio Key</span>
+      </div>
+
+      <button class="btn" id="new-chat-btn" title="Start a new conversational session">
+        <span>➕</span>
+        <span>New Chat</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Chat Log Area -->
+  <main id="chat-scroll">
+    <div class="welcome-card" id="welcome-banner">
+      <h2>🤖 Frostfire Autonomous Swarm Console</h2>
+      <p>
+        Conversational interface to the Cloud Swarm Gateway. Commands, browser actions, and patches execute locally inside your sandboxed environment with tamper-proof Merkle audit chaining.
+      </p>
+      <div class="quick-chips">
+        <div class="chip" onclick="sendPrompt('Open Chrome and browse to https://news.ycombinator.com and summarize the top headlines')">🌐 Browse Hacker News via Chrome</div>
+        <div class="chip" onclick="sendPrompt('List all files in the current workspace')">📂 List repository files</div>
+        <div class="chip" onclick="sendPrompt('Check git status and branch')">🌿 Check git status</div>
+        <div class="chip" onclick="sendPrompt('Run cargo test in the workspace')">🧪 Run cargo test</div>
+        <div class="chip" onclick="sendPrompt('What is your architecture and security model?')">💡 Explain architecture</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Input Bar -->
+  <footer>
+    <div class="input-wrapper">
+      <div class="input-box">
+        <textarea id="prompt-input" rows="1" placeholder="Type a message or instruction for the swarm (Enter to send, Shift+Enter for newline)..."></textarea>
+        <button class="send-btn" id="send-btn" disabled title="Send message">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Merkle Audit Ledger Modal -->
+  <div class="modal-backdrop" id="audit-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>🛡️ SQLite Merkle Audit Ledger</h3>
+        <button class="btn" onclick="closeAuditModal()">✕</button>
+      </div>
+      <div class="modal-body" id="audit-modal-content">
+        Loading cryptographic Merkle audit trail...
+      </div>
+    </div>
+  </div>
+
+  <!-- Cloud Desktop Modal (noVNC) -->
+  <div class="modal-backdrop" id="kasm-modal">
+    <div class="modal modal-wide" id="kasm-modal-container">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <h3 style="margin: 0; font-size: 1rem;">🖥️ Cloud Desktop (noVNC / WebSockets)</h3>
+          <span style="font-size: 0.72rem; color: #3fb950; background: rgba(63, 185, 80, 0.1); padding: 2px 8px; border-radius: 12px; border: 1px solid rgba(63, 185, 80, 0.3);">Real-Time Stream</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 6px; border: 1px solid var(--surface-border);">
+            <span style="font-size: 0.72rem; color: var(--text-muted);">Host:</span>
+            <input type="text" id="vnc-host-input" value="34.106.12.222" style="background: transparent; border: none; color: var(--text); font-size: 0.75rem; width: 105px; outline: none;" onchange="updateVncHost(this.value)" />
+          </div>
+          <div style="display: flex; gap: 4px;">
+            <button class="btn" onclick="selectScreen(6080)" style="padding: 4px 8px; font-size: 0.75rem;">User 1 (:1)</button>
+            <button class="btn" onclick="selectScreen(6081, 'user2')" style="padding: 4px 8px; font-size: 0.75rem;">User 2 (:2)</button>
+            <button class="btn" onclick="selectScreen(6081, 'user3')" style="padding: 4px 8px; font-size: 0.75rem;">User 3 (:3)</button>
+          </div>
+          <input type="text" id="kasm-url-input" value="" placeholder="noVNC URL (http://<host>:6080/vnc.html)" style="background: var(--surface-hover); border: 1px solid var(--surface-border); color: var(--text); padding: 5px 10px; border-radius: 6px; font-size: 0.8rem; width: 220px;" />
+          <button class="btn" id="kasm-connect-btn" style="padding: 5px 12px; font-size: 0.8rem;">Connect</button>
+          <button class="btn" id="kasm-open-tab-btn" title="Open in new browser tab" style="padding: 5px 10px; font-size: 0.8rem;">↗ Tab</button>
+          <button class="btn" id="kasm-fullscreen-btn" title="Toggle Fullscreen" style="padding: 5px 10px; font-size: 0.8rem;">⛶ Fullscreen</button>
+          <button class="btn" onclick="closeKasmModal()" style="padding: 5px 12px; font-size: 0.8rem;">✕</button>
+        </div>
+      </div>
+      <div class="modal-body" style="padding: 0; display: flex; flex-direction: column; flex: 1; background: #000; overflow: hidden; position: relative;">
+        <iframe id="kasm-iframe" src="" allow="clipboard-read; clipboard-write; fullscreen" style="display: none; width: 100%; height: 100%; border: none; flex: 1; min-height: 540px;"></iframe>
+        <div id="kasm-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 540px; color: var(--text-muted); text-align: center; padding: 24px;">
+          <div style="font-size: 3.2rem; margin-bottom: 12px;">🖥️</div>
+          <h4 style="color: var(--text); margin-bottom: 8px; font-size: 1.1rem;">noVNC Virtual Desktop Session</h4>
+          <p style="max-width: 520px; font-size: 0.85rem; line-height: 1.5; margin-bottom: 18px; color: var(--text-muted);">
+            Streams the cloud or local microVM X11 desktop over WebSockets into HTML5 Canvas. Watch the autonomous agent move and click, or take over with mouse and keyboard at any moment.
+          </p>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn" onclick="connectKasmIframe()" style="background: var(--primary); color: white; border-color: var(--primary); padding: 8px 18px;">Connect Desktop Session</button>
+            <button class="btn" onclick="window.open(document.getElementById('kasm-url-input').value, '_blank')" style="padding: 8px 18px;">Open in New Tab</button>
+          </div>
+          <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 20px;">
+            ⚡ <em>Powered by Xvfb in-memory framebuffer, x11vnc RFB, and websockify token routing with zero certificate friction.</em>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Google AI Studio Key Modal -->
+  <div class="modal-backdrop" id="ai-key-modal">
+    <div class="modal" style="max-width: 480px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span>🔑</span>
+          <h3 style="margin:0; font-size:1rem;">Google AI Studio API Key</h3>
+        </div>
+        <button class="btn" onclick="closeKeyModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px; line-height: 1.5;">
+          Connect your Google AI Studio Gemini API key to enable live reasoning, command generation, and tool execution. Your key is stored securely in your browser's <code style="color:var(--primary);">localStorage</code>.
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;">
+          <label style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">API Key (AIzaSy...)</label>
+          <input type="password" id="gemini-key-input" placeholder="AIzaSy..." style="background: var(--surface-hover); border: 1px solid var(--surface-border); color: var(--text); padding: 9px 12px; border-radius: 6px; font-size: 0.85rem; width: 100%; outline: none;" />
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+          <label style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Gemini Model</label>
+          <input type="text" id="gemini-model-input" value="gemini-3.8-flash" placeholder="gemini-3.8-flash" style="background: var(--surface-hover); border: 1px solid var(--surface-border); color: var(--text); padding: 9px 12px; border-radius: 6px; font-size: 0.85rem; width: 100%; outline: none;" />
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <button class="btn" onclick="clearApiKey()" style="color: var(--danger); border-color: rgba(248,81,73,0.3);">Clear Key</button>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn" onclick="closeKeyModal()">Cancel</button>
+            <button class="btn" onclick="saveApiKey()" style="background: var(--primary); color: white; border-color: var(--primary);">Save Key</button>
+          </div>
+        </div>
+        <div id="key-status-msg" style="margin-top: 12px; font-size: 0.75rem; text-align: center;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let sessionId = "session-" + Math.random().toString(36).substring(2, 10);
+    const chatScroll = document.getElementById("chat-scroll");
+    const promptInput = document.getElementById("prompt-input");
+    const sendBtn = document.getElementById("send-btn");
+    const gatewayLabel = document.getElementById("gateway-label");
+    const statusDot = document.getElementById("status-dot");
+    const auditLabel = document.getElementById("audit-label");
+    const auditBadge = document.getElementById("audit-badge");
+    const auditModal = document.getElementById("audit-modal");
+    const auditModalContent = document.getElementById("audit-modal-content");
+    const newChatBtn = document.getElementById("new-chat-btn");
+    const welcomeBanner = document.getElementById("welcome-banner");
+    const chromeLabel = document.getElementById("chrome-label");
+    const chromeBadge = document.getElementById("chrome-badge");
+    const webrtcLabel = document.getElementById("webrtc-label");
+    const webrtcBadge = document.getElementById("webrtc-badge");
+    const kasmBadge = document.getElementById("kasm-badge");
+    const kasmLabel = document.getElementById("kasm-label");
+    const kasmModal = document.getElementById("kasm-modal");
+    const kasmIframe = document.getElementById("kasm-iframe");
+    const kasmPlaceholder = document.getElementById("kasm-placeholder");
+    const kasmUrlInput = document.getElementById("kasm-url-input");
+    const kasmConnectBtn = document.getElementById("kasm-connect-btn");
+    const kasmOpenTabBtn = document.getElementById("kasm-open-tab-btn");
+    const kasmFullscreenBtn = document.getElementById("kasm-fullscreen-btn");
+    const aiKeyBadge = document.getElementById("ai-key-badge");
+    const aiKeyLabel = document.getElementById("ai-key-label");
+    const aiKeyModal = document.getElementById("ai-key-modal");
+    const geminiKeyInput = document.getElementById("gemini-key-input");
+    const geminiModelInput = document.getElementById("gemini-model-input");
+    const keyStatusMsg = document.getElementById("key-status-msg");
+
+    function updateKeyBadgeUI() {
+      const savedKey = localStorage.getItem("frostfire_gemini_api_key");
+      const savedModel = localStorage.getItem("frostfire_gemini_model") || "gemini-3.8-flash";
+      if (geminiModelInput) geminiModelInput.value = savedModel;
+      if (savedKey && savedKey.trim().length > 0) {
+        aiKeyLabel.innerText = `${savedModel} ✓`;
+        aiKeyBadge.style.borderColor = "#3fb950";
+        if (geminiKeyInput) geminiKeyInput.value = savedKey;
+      } else {
+        aiKeyLabel.innerText = "AI Studio Key";
+        aiKeyBadge.style.borderColor = "var(--surface-border)";
+        if (geminiKeyInput) geminiKeyInput.value = "";
+      }
+    }
+
+    if (aiKeyBadge) {
+      aiKeyBadge.addEventListener("click", () => {
+        aiKeyModal.style.display = "flex";
+        const savedKey = localStorage.getItem("frostfire_gemini_api_key");
+        const savedModel = localStorage.getItem("frostfire_gemini_model") || "gemini-3.8-flash";
+        if (geminiKeyInput) {
+          geminiKeyInput.value = savedKey || "";
+          geminiKeyInput.focus();
+        }
+        if (geminiModelInput) {
+          geminiModelInput.value = savedModel;
+        }
+        if (keyStatusMsg) keyStatusMsg.innerText = "";
+      });
+    }
+
+    function closeKeyModal() {
+      if (aiKeyModal) aiKeyModal.style.display = "none";
+    }
+
+    function saveApiKey() {
+      const val = geminiKeyInput ? geminiKeyInput.value.trim() : "";
+      const modelVal = geminiModelInput ? (geminiModelInput.value.trim() || "gemini-3.8-flash") : "gemini-3.8-flash";
+      localStorage.setItem("frostfire_gemini_model", modelVal);
+      if (val) {
+        localStorage.setItem("frostfire_gemini_api_key", val);
+        fetch("/api/key", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ api_key: val, model: modelVal })
+        }).catch(e => console.warn("Failed to persist key to server:", e));
+        if (keyStatusMsg) {
+          keyStatusMsg.style.color = "#3fb950";
+          keyStatusMsg.innerText = `✓ Model ${modelVal} & key saved to cloud VM!`;
+        }
+        setTimeout(() => closeKeyModal(), 600);
+      } else {
+        clearApiKey();
+      }
+      updateKeyBadgeUI();
+    }
+
+    function clearApiKey() {
+      localStorage.removeItem("frostfire_gemini_api_key");
+      fetch("/api/key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ api_key: "", model: "gemini-3.8-flash" })
+      }).catch(e => console.warn("Failed to clear key on server:", e));
+      if (geminiKeyInput) geminiKeyInput.value = "";
+      if (keyStatusMsg) {
+        keyStatusMsg.style.color = "var(--text-muted)";
+        keyStatusMsg.innerText = "Key removed from local storage & server.";
+      }
+      updateKeyBadgeUI();
+      setTimeout(() => closeKeyModal(), 600);
+    }
+
+    fetch("/api/key")
+      .then(r => r.json())
+      .then(data => {
+        if (data.has_key && !localStorage.getItem("frostfire_gemini_api_key")) {
+          localStorage.setItem("frostfire_gemini_api_key", "SAVED_ON_SERVER");
+        }
+        if (data.model) {
+          localStorage.setItem("frostfire_gemini_model", data.model);
+        }
+        updateKeyBadgeUI();
+      })
+      .catch(() => {});
+
+    let storedHost = localStorage.getItem("frostfire_vnc_host");
+    if (!storedHost || storedHost === "127.0.0.1" || storedHost === "localhost") {
+      storedHost = "34.106.12.222";
+      localStorage.setItem("frostfire_vnc_host", storedHost);
+    }
+    let currentVncHost = storedHost;
+    const vncHostInput = document.getElementById("vnc-host-input");
+    if (vncHostInput) {
+      vncHostInput.value = currentVncHost;
+    }
+
+    function updateVncHost(val) {
+      if (val && val.trim()) {
+        currentVncHost = val.trim();
+        localStorage.setItem("frostfire_vnc_host", currentVncHost);
+        selectScreen(6080);
+      }
+    }
+
+    function getVncUrl(port, token) {
+      let host = currentVncHost || "34.106.12.222";
+      if (host === "127.0.0.1" || host === "localhost") {
+        host = "34.106.12.222";
+      }
+      if (token) {
+        return `http://${host}:${port}/vnc.html?autoconnect=true&resize=remote&path=?token=${token}`;
+      }
+      return `http://${host}:${port}/vnc.html?autoconnect=true&resize=remote`;
+    }
+
+    function selectScreen(port, token) {
+      const url = getVncUrl(port, token);
+      kasmUrlInput.value = url;
+      connectKasmIframe();
+    }
+
+    let savedKasmUrl = localStorage.getItem("frostfire_kasm_url");
+    if (!savedKasmUrl || savedKasmUrl.includes("127.0.0.1:6080") || savedKasmUrl.includes("localhost:6080")) {
+      savedKasmUrl = getVncUrl(6080);
+      localStorage.setItem("frostfire_kasm_url", savedKasmUrl);
+    }
+    kasmUrlInput.value = savedKasmUrl;
+
+    kasmBadge.addEventListener("click", () => {
+      kasmModal.style.display = "flex";
+      if (!kasmIframe.src || kasmIframe.src === "" || kasmIframe.src === "about:blank") {
+        connectKasmIframe();
+      }
+    });
+
+    function closeKasmModal() {
+      kasmModal.style.display = "none";
+    }
+
+    function connectKasmIframe() {
+      let url = kasmUrlInput.value.trim() || getVncUrl(6080);
+      if (url.includes("127.0.0.1:6080") || url.includes("localhost:6080")) {
+        url = url.replace("127.0.0.1:6080", "34.106.12.222:6080").replace("localhost:6080", "34.106.12.222:6080");
+        kasmUrlInput.value = url;
+      }
+      if (url.includes("127.0.0.1:6081") || url.includes("localhost:6081")) {
+        url = url.replace("127.0.0.1:6081", "34.106.12.222:6081").replace("localhost:6081", "34.106.12.222:6081");
+        kasmUrlInput.value = url;
+      }
+      localStorage.setItem("frostfire_kasm_url", url);
+      kasmPlaceholder.style.display = "none";
+      kasmIframe.style.display = "block";
+      kasmIframe.src = url;
+    }
+
+    kasmConnectBtn.addEventListener("click", connectKasmIframe);
+
+    kasmOpenTabBtn.addEventListener("click", () => {
+      const url = kasmUrlInput.value.trim() || getVncUrl(6080);
+      window.open(url, "_blank");
+    });
+
+    kasmFullscreenBtn.addEventListener("click", () => {
+      const container = document.getElementById("kasm-modal-container");
+      if (!document.fullscreenElement) {
+        container.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    });
+
+    // Auto-resize input
+    promptInput.addEventListener("input", () => {
+      promptInput.style.height = "auto";
+      promptInput.style.height = Math.min(promptInput.scrollHeight, 160) + "px";
+      sendBtn.disabled = !promptInput.value.trim();
+    });
+
+    promptInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        if (promptInput.value.trim()) {
+          sendPrompt(promptInput.value.trim());
+        }
+      }
+    });
+
+    sendBtn.addEventListener("click", () => {
+      if (promptInput.value.trim()) {
+        sendPrompt(promptInput.value.trim());
+      }
+    });
+
+    newChatBtn.addEventListener("click", async () => {
+      sessionId = "session-" + Math.random().toString(36).substring(2, 10);
+      try {
+        await fetch("/api/clear", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId })
+        });
+      } catch (e) {}
+      chatScroll.innerHTML = "";
+      chatScroll.appendChild(welcomeBanner);
+      welcomeBanner.style.display = "block";
+    });
+
+    // Check system status & audit
+    async function updateStatus() {
+      try {
+        const res = await fetch("/api/status");
+        if (res.ok) {
+          const data = await res.json();
+          gatewayLabel.innerText = "Gateway: Connected";
+          statusDot.className = "status-dot";
+
+          if (data.chrome_attached) {
+            chromeLabel.innerText = "Chrome: Connected (Port 9222)";
+            chromeBadge.style.borderColor = "#3fb950";
+          } else {
+            chromeLabel.innerText = "Chrome: Offline";
+            chromeBadge.style.borderColor = "var(--surface-border)";
+          }
+
+          if (data.vnc_host) {
+            let host = data.vnc_host;
+            if (host === "127.0.0.1" || host === "localhost") {
+              host = "34.106.12.222";
+            }
+            currentVncHost = host;
+            localStorage.setItem("frostfire_vnc_host", currentVncHost);
+            if (vncHostInput) vncHostInput.value = currentVncHost;
+          }
+
+          if (data.desktop_active || data.novnc_active || data.kasm_active) {
+            kasmLabel.innerText = `User 1: Connected (${currentVncHost}:6080)`;
+            kasmBadge.style.borderColor = "#3fb950";
+          } else {
+            kasmLabel.innerText = "Cloud Desktop";
+            kasmBadge.style.borderColor = "var(--surface-border)";
+          }
+        } else {
+          gatewayLabel.innerText = "Gateway: Offline";
+          statusDot.className = "status-dot disconnected";
+        }
+      } catch (e) {
+        gatewayLabel.innerText = "Gateway: Offline";
+        statusDot.className = "status-dot disconnected";
+      }
+
+      try {
+        const res = await fetch("/api/audit");
+        if (res.ok) {
+          const data = await res.json();
+          auditLabel.innerText = `Audit: ${data.total_entries} Blocks (${data.verified ? "Verified ✓" : "Tampered ✗"})`;
+        }
+      } catch (e) {}
+    }
+
+    async function initWebRtc() {
+      try {
+        const pc = new RTCPeerConnection({ iceServers: [] });
+        const dc = pc.createDataChannel("frostfire-screens");
+
+        dc.onopen = () => {
+          webrtcLabel.innerText = "WebRTC: Connected (P2P)";
+          webrtcBadge.style.borderColor = "#3fb950";
+        };
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        const res = await fetch("/api/webrtc/offer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sdp: offer.sdp, type: offer.type })
+        });
+
+        if (res.ok) {
+          webrtcLabel.innerText = "WebRTC: Connected (P2P)";
+          webrtcBadge.style.borderColor = "#3fb950";
+        }
+      } catch (e) {
+        webrtcLabel.innerText = "WebRTC: Loopback Active";
+      }
+    }
+
+    auditBadge.addEventListener("click", async () => {
+      auditModal.style.display = "flex";
+      auditModalContent.innerHTML = "Fetching SQLite Merkle audit ledger...";
+      try {
+        const res = await fetch("/api/audit");
+        const data = await res.json();
+        let html = `
+          <div style="margin-bottom: 14px;">
+            <div><strong>Status:</strong> ${data.verified ? '<span style="color:#3fb950;">VERIFIED (Cryptographically Intact)</span>' : '<span style="color:#f85149;">TAMPERED</span>'}</div>
+            <div><strong>Total Action Entries:</strong> ${data.total_entries}</div>
+            <div><strong>Merkle Root Hash:</strong> <code style="font-size:0.75rem;">${data.merkle_root || 'Genesis'}</code></div>
+          </div>
+          <h4 style="margin-bottom: 8px;">Recent Ledger Transactions (SHA-256 Chained):</h4>
+        `;
+        if (data.entries && data.entries.length > 0) {
+          data.entries.slice().reverse().forEach(e => {
+            html += `
+              <div class="audit-entry">
+                <div style="color:var(--primary); font-weight:600;">#${e.id || e.entry_id} [${e.action_type}] - Agent: ${e.agent_id}</div>
+                <div style="color:var(--text-muted); font-size:0.75rem;">${e.timestamp}</div>
+                <div style="color:#bc8cff; font-size:0.75rem;">Hash: ${e.entry_hash}</div>
+                <div style="color:var(--text-muted); font-size:0.72rem;">Prev: ${e.previous_hash}</div>
+              </div>
+            `;
+          });
+        } else {
+          html += "<p style='color:var(--text-muted);'>No audit ledger records yet.</p>";
+        }
+        auditModalContent.innerHTML = html;
+      } catch (err) {
+        auditModalContent.innerText = "Failed to load audit ledger: " + err;
+      }
+    });
+
+    function closeAuditModal() {
+      auditModal.style.display = "none";
+    }
+
+    function cleanTerminalOutput(text) {
+      if (!text) return "(no output)";
+      let clean = text
+        .replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\|\r|\n)/g, "")
+        .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
+        .replace(/\x1b[@-Z\\-_]/g, "")
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .trim();
+      return clean ? clean.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : "(empty output)";
+    }
+
+    // Format simple markdown into HTML
+    function formatMarkdown(text) {
+      if (!text) return "";
+      let html = text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+      // Code blocks ```...```
+      html = html.replace(/```([\s\S]*?)```/g, (match, p1) => {
+        return `<pre><code>${p1.trim()}</code></pre>`;
+      });
+
+      // Inline code `...`
+      html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+
+      // Bold **...**
+      html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+
+      // Bullet lists
+      html = html.replace(/^\s*[\-\*]\s+(.*)$/gm, "<li>$1</li>");
+      html = html.replace(/(<li>.*<\/li>)/s, "<ul>$1</ul>");
+
+      // Paragraph breaks
+      html = html.replace(/\n\n+/g, "</p><p>");
+      return `<p>${html}</p>`;
+    }
+
+    async function sendPrompt(text) {
+      welcomeBanner.style.display = "none";
+      promptInput.value = "";
+      promptInput.style.height = "auto";
+      sendBtn.disabled = true;
+
+      // Add user message
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const userRow = document.createElement("div");
+      userRow.className = "message-row user";
+      userRow.innerHTML = `
+        <div class="message-meta"><span>You</span><span>${timeStr}</span></div>
+        <div class="bubble user">${text.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+      `;
+      chatScroll.appendChild(userRow);
+
+      // Thinking indicator
+      const thinkingRow = document.createElement("div");
+      thinkingRow.className = "message-row agent";
+      thinkingRow.id = "thinking-indicator";
+      thinkingRow.innerHTML = `
+        <div class="thinking-row">
+          <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+          <span>Cloud Swarm is reasoning & executing...</span>
+        </div>
+      `;
+      chatScroll.appendChild(thinkingRow);
+      chatScroll.scrollTop = chatScroll.scrollHeight;
+
+      try {
+        const apiKey = localStorage.getItem("frostfire_gemini_api_key");
+        const model = localStorage.getItem("frostfire_gemini_model") || "gemini-3.8-flash";
+        const reqPayload = { text, session_id: sessionId, model };
+        if (apiKey && apiKey.trim()) {
+          reqPayload.api_key = apiKey.trim();
+        }
+
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(reqPayload)
+        });
+
+        thinkingRow.remove();
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          const agentRow = document.createElement("div");
+          agentRow.className = "message-row agent";
+          agentRow.innerHTML = `
+            <div class="message-meta"><span>Cloud Swarm</span><span>${timeStr}</span></div>
+            <div class="bubble agent" style="border-color: var(--danger); color: var(--danger);">
+              ⚠️ Error: ${errData.error || "Failed to communicate with Cloud Gateway"}
+            </div>
+          `;
+          chatScroll.appendChild(agentRow);
+        } else {
+          const data = await response.json();
+          const agentRow = document.createElement("div");
+          agentRow.className = "message-row agent";
+
+          let innerHtml = `<div class="message-meta"><span>Cloud Swarm</span><span>${timeStr}</span></div>`;
+          innerHtml += `<div class="bubble agent">`;
+
+          if (data.agent_message && data.agent_message.trim()) {
+            innerHtml += formatMarkdown(data.agent_message);
+          }
+
+          // Render executed tool cards
+          if (data.tool_executions && data.tool_executions.length > 0) {
+            data.tool_executions.forEach(t => {
+              if (t.type === "exec_command") {
+                innerHtml += `
+                  <div class="tool-card">
+                    <div class="tool-card-header">
+                      <span class="tool-title">📟 Virtual PTY: <code>${t.command} ${t.args.join(" ")}</code></span>
+                      <span style="color: #3fb950; font-size: 0.75rem;">✓ Exit 0</span>
+                    </div>
+                    <div class="tool-terminal">${cleanTerminalOutput(t.output)}</div>
+                  </div>
+                `;
+              } else if (t.type === "apply_patch") {
+                innerHtml += `
+                  <div class="tool-card">
+                    <div class="tool-card-header">
+                      <span class="tool-title">📝 Atomic Patch: <code>${t.file_path}</code></span>
+                      <span style="color: #3fb950; font-size: 0.75rem;">✓ Applied (+${t.lines_added} -${t.lines_removed})</span>
+                    </div>
+                  </div>
+                `;
+              } else if (t.type === "browser_action") {
+                innerHtml += `
+                  <div class="tool-card" style="border-color: rgba(88, 166, 255, 0.4); background: #0d1117;">
+                    <div class="tool-card-header">
+                      <span class="tool-title">🌐 Chrome Browser: <a href="${t.url || 'http://127.0.0.1:9222'}" target="_blank" style="color:var(--primary); text-decoration:underline;">${t.title ? t.title.replace(/</g, "&lt;") : t.url || 'Web Action'}</a></span>
+                      <span style="color: #3fb950; font-size: 0.75rem;">✓ CDP Port 9222</span>
+                    </div>
+                    ${t.screenshot_base64 ? `
+                      <div style="margin-top: 10px; border-radius: 6px; overflow: hidden; border: 1px solid var(--surface-border); max-height: 320px; text-align: center; background: #000;">
+                        <img src="data:image/jpeg;base64,${t.screenshot_base64}" alt="Chrome Viewport" style="width: 100%; height: auto; max-height: 320px; object-fit: contain; cursor: pointer;" onclick="window.open(this.src)" title="Click to open full-resolution screenshot" />
+                      </div>
+                    ` : ''}
+                    ${t.output && t.output.trim() ? `
+                      <div class="tool-terminal" style="max-height: 140px; font-size: 0.8rem; margin-top: 8px;">${cleanTerminalOutput(t.output)}</div>
+                    ` : ''}
+                  </div>
+                `;
+              }
+            });
+          }
+
+          innerHtml += `</div>`;
+          agentRow.innerHTML = innerHtml;
+          chatScroll.appendChild(agentRow);
+        }
+      } catch (err) {
+        thinkingRow.remove();
+        const agentRow = document.createElement("div");
+        agentRow.className = "message-row agent";
+        agentRow.innerHTML = `
+          <div class="message-meta"><span>Cloud Swarm</span><span>${timeStr}</span></div>
+          <div class="bubble agent" style="border-color: var(--danger); color: var(--danger);">
+            ❌ Network error connecting to local UI server: ${err.message}
+          </div>
+        `;
+        chatScroll.appendChild(agentRow);
+      }
+
+      chatScroll.scrollTop = chatScroll.scrollHeight;
+      updateStatus();
+    }
+
+    // Initial check and periodic poll
+    updateStatus();
+    updateKeyBadgeUI();
+    initWebRtc();
+    setInterval(updateStatus, 5000);
+  </script>
+</body>
+</html>

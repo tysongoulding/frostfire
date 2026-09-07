@@ -1,0 +1,65 @@
+# Frostfire Center Launcher Dock (Pure 3-button launcher, perfectly centered & symmetrical)
+# Background 1: Panel dock pill
+rounded = 20
+border_width = 1
+border_sides = TBLR
+background_color = #181825 240
+border_color = #45475a 255
+background_color_hover = #181825 240
+border_color_hover = #89b4fa 255
+background_color_pressed = #11111b 255
+border_color_pressed = #89b4fa 255
+
+# Background 2: Launcher buttons normal / hover
+rounded = 12
+border_width = 0
+border_sides = TBLR
+background_color = #313244 0
+border_color = #585b70 0
+background_color_hover = #313244 220
+border_color_hover = #89b4fa 255
+background_color_pressed = #45475a 255
+border_color_pressed = #b4befe 255
+
+# Background 3: Tooltip
+rounded = 6
+border_width = 1
+border_sides = TBLR
+background_color = #181825 240
+border_color = #45475a 255
+
+# Panel configuration - ONLY Launcher (L)
+panel_items = L
+panel_size = 0 54
+panel_shrink = 1
+panel_margin = 0 14
+panel_padding = 10 4 10
+panel_background_id = 1
+panel_position = bottom center horizontal
+panel_layer = top
+panel_monitor = all
+panel_dock = 0
+wm_menu = 0
+autohide = 0
+strut_policy = follow_size
+
+# Launcher Configuration
+launcher_padding = 4 2 12
+launcher_background_id = 0
+launcher_icon_background_id = 2
+launcher_icon_size = 38
+launcher_icon_asb = 100 0 0
+launcher_icon_theme_override = 1
+launcher_icon_theme = Papirus
+launcher_tooltip = 1
+launcher_item_app = /usr/share/applications/chrome-launch.desktop
+launcher_item_app = /usr/share/applications/files-launch.desktop
+launcher_item_app = /usr/share/applications/terminal-launch.desktop
+
+# Tooltip
+tooltip_show_timeout = 0.3
+tooltip_hide_timeout = 0.1
+tooltip_padding = 4 6
+tooltip_background_id = 3
+tooltip_font_color = #cdd6f4 100
+tooltip_font = Sans 9

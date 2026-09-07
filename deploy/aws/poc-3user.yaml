@@ -1,0 +1,425 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Frostfire 3-User Lean AWS POC: Single EC2 Instance ($0.08-$0.16/hr) with Multi-Display Desktop Mux and Gemini 3.8 Flash'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: frostfire-poc
+    Description: Prefix for resource naming
+
+  InstanceType:
+    Type: String
+    Default: t3.xlarge
+    AllowedValues:
+      - t3.large     # 2 vCPU, 8 GB RAM  (~$0.08/hr)
+      - t3.xlarge    # 4 vCPU, 16 GB RAM (~$0.16/hr - Recommended for 3 concurrent users)
+      - c6i.xlarge   # 4 vCPU, 8 GB RAM  (~$0.17/hr - High compute)
+      - t4g.xlarge   # 4 vCPU, 16 GB RAM (~$0.13/hr - ARM64 Graviton)
+    Description: EC2 instance size for the 3-user host
+
+  GeminiApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: 'Google Gemini API Key for Gemini 3.8 Flash (Free Tier supported: 1,500 req/day free)'
+
+  VolumeSizeGB:
+    Type: Number
+    Default: 50
+    Description: Root EBS gp3 SSD volume size in GB
+
+  AllowedCIDR:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR range allowed to access Web UI and VNC (Restrict to your IP in production)
+
+  ExistingEipAllocationId:
+    Type: String
+    Default: ""
+    Description: 'Existing AWS Elastic IP Allocation ID (e.g. eipalloc-04be7ff448893321c). If left blank, a new EIP is allocated.'
+
+Conditions:
+  HasExistingEIP: !Not [!Equals [!Ref ExistingEipAllocationId, ""]]
+  CreateNewEIP: !Equals [!Ref ExistingEipAllocationId, ""]
+
+Resources:
+  # --------------------------------------------------------------------------
+  # 1. Minimal VPC & Internet Gateway
+  # --------------------------------------------------------------------------
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.20.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc'
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-igw'
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.20.1.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-subnet'
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-rt'
+
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref RouteTable
+
+  # --------------------------------------------------------------------------
+  # 2. Security Group (Web UI, VNC, gRPC)
+  # --------------------------------------------------------------------------
+  PocSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for 3-User Frostfire POC
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        # Frostfire Web UI (Chat, Desktop viewer, Audit inspector)
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: !Ref AllowedCIDR
+          Description: Frostfire Web UI
+        # gRPC Agent Tunnel Gateway
+        - IpProtocol: tcp
+          FromPort: 50051
+          ToPort: 50051
+          CidrIp: !Ref AllowedCIDR
+          Description: gRPC Tunnel Gateway
+        # User 1 Primary noVNC Display
+        - IpProtocol: tcp
+          FromPort: 6080
+          ToPort: 6080
+          CidrIp: !Ref AllowedCIDR
+          Description: User 1 Desktop Stream (Display :1)
+        # User 2 & User 3 Tokenized noVNC Displays
+        - IpProtocol: tcp
+          FromPort: 6081
+          ToPort: 6081
+          CidrIp: !Ref AllowedCIDR
+          Description: User 2 and 3 Desktop Streams (Displays :2 and :3)
+        # SSH access (optional)
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedCIDR
+          Description: SSH Terminal
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  # --------------------------------------------------------------------------
+  # 3. IAM Role & SSM Session Manager (SSH-less terminal access)
+  # --------------------------------------------------------------------------
+  PocInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  PocInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${EnvironmentName}-profile'
+      Roles:
+        - !Ref PocInstanceRole
+
+  # --------------------------------------------------------------------------
+  # 4. EC2 Instance with Automated 3-User Setup
+  # --------------------------------------------------------------------------
+  PocInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      SubnetId: !Ref PublicSubnet
+      IamInstanceProfile: !Ref PocInstanceProfile
+      SecurityGroupIds:
+        - !Ref PocSecurityGroup
+      # Ubuntu 24.04 LTS Noble Numbat dynamic AMI
+      ImageId: '{{resolve:ssm:/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id}}'
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: !Ref VolumeSizeGB
+            VolumeType: gp3
+            DeleteOnTermination: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-host'
+      UserData:
+        Fn::Base64: !Sub |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec > >(tee /var/log/frostfire-poc-init.log|logger -t frostfire-poc -s 2>/dev/console) 2>&1
+
+          echo "=========================================================="
+          echo "🚀 Initializing Frostfire 3-User Lean AWS POC Host"
+          echo "=========================================================="
+
+          # 1. Install desktop stacks, Xvfb, VNC, websockify, and Chrome
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            xvfb x11vnc novnc websockify openbox xfwm4 picom \
+            curl wget jq git build-essential net-tools
+
+          # Install Google Chrome for browser automation & CDP
+          if ! command -v google-chrome &>/dev/null; then
+            wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+            apt-get install -y ./google-chrome-stable_current_amd64.deb || true
+            rm -f google-chrome-stable_current_amd64.deb
+          fi
+
+          # 2. Configure Gemini 3.8 Flash API Key
+          mkdir -p /root/.config/frostfire /home/ubuntu/.config/frostfire
+          if [ -n "${GeminiApiKey}" ]; then
+            echo "${GeminiApiKey}" > /root/.config/frostfire/gemini.key
+            echo "${GeminiApiKey}" > /home/ubuntu/.config/frostfire/gemini.key
+            echo "export GEMINI_API_KEY='${GeminiApiKey}'" >> /etc/environment
+            echo "export GEMINI_MODEL='gemini-3.8-flash'" >> /etc/environment
+          fi
+
+          # 3. Setup Multi-Screen Display Supervisor as Systemd Service
+          cat <<'EOF' > /usr/local/bin/frostfire-display-supervisor.sh
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          TOKEN_DIR="/tmp/sand-novnc-tokens.d"
+          LOG_DIR="/tmp/frostfire-display-logs"
+          mkdir -p "${!TOKEN_DIR}" "${!LOG_DIR}" /tmp/.X11-unix
+          chmod 1777 /tmp/.X11-unix "${!TOKEN_DIR}"
+
+          ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/desktop.html || true
+          ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html || true
+
+          pkill -9 websockify || true
+          pkill -9 x11vnc || true
+          pkill -9 Xvfb || true
+          sleep 1
+
+          websockify --web=/usr/share/novnc --heartbeat=30 0.0.0.0:6080 127.0.0.1:5901 > "${!LOG_DIR}/ws_primary.log" 2>&1 &
+          websockify --web=/usr/share/novnc --heartbeat=30 --token-plugin TokenFile --token-source "${!TOKEN_DIR}" 0.0.0.0:6081 > "${!LOG_DIR}/ws_forks.log" 2>&1 &
+
+          spawn_user_screen() {
+            local D="$1"
+            local RFB=$((5900 + D))
+            local TOKEN="$2"
+
+            rm -f "/tmp/.X${!D}-lock" "/tmp/.X11-unix/X${!D}" || true
+            Xvfb ":${!D}" -screen 0 1280x800x24 -ac +extension GLX +render -noreset > "${!LOG_DIR}/xvfb_${!D}.log" 2>&1 &
+            sleep 0.5
+            DISPLAY=":${!D}" su - ubuntu -c "openbox > /dev/null 2>&1 &"
+            x11vnc -skip_lockkeys -display ":${!D}" -localhost -nopw -shared -forever -noxdamage -rfbport "${!RFB}" -quiet > "${!LOG_DIR}/x11vnc_${!D}.log" 2>&1 &
+
+            if [ -n "${!TOKEN}" ]; then
+              echo "${!TOKEN}: 127.0.0.1:${!RFB}" > "${!TOKEN_DIR}/${!TOKEN}.token"
+            fi
+          }
+
+          spawn_user_screen 1 ""
+          spawn_user_screen 2 "user2"
+          spawn_user_screen 3 "user3"
+
+          wait
+          EOF
+          sed -i 's/^          //' /usr/local/bin/frostfire-display-supervisor.sh
+          chmod +x /usr/local/bin/frostfire-display-supervisor.sh
+
+          cat <<'EOF' > /etc/systemd/system/frostfire-display.service
+          [Unit]
+          Description=Frostfire Multi-Screen Display Supervisor
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=root
+          ExecStart=/usr/local/bin/frostfire-display-supervisor.sh
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          sed -i 's/^          //' /etc/systemd/system/frostfire-display.service
+
+          # 4. Deploy Frostfire Remote Executor Service (Port 3000)
+          cat <<'EOF' > /usr/local/bin/frostfire-exec-server.py
+          import http.server
+          import json
+          import subprocess
+          import os
+
+          class ExecHandler(http.server.BaseHTTPRequestHandler):
+              def do_OPTIONS(self):
+                  self.send_response(200)
+                  self.send_header("Access-Control-Allow-Origin", "*")
+                  self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                  self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                  self.end_headers()
+
+              def do_GET(self):
+                  self.send_response(200)
+                  self.send_header("Access-Control-Allow-Origin", "*")
+                  self.send_header("Content-Type", "application/json")
+                  self.end_headers()
+                  self.wfile.write(json.dumps({"status": "ok", "service": "frostfire-executor"}).encode("utf-8"))
+
+              def do_POST(self):
+                  if self.path == "/exec":
+                      content_length = int(self.headers.get("Content-Length", 0))
+                      body = self.rfile.read(content_length)
+                      try:
+                          data = json.loads(body.decode("utf-8"))
+                          display = data.get("display", 1)
+                          cmd = data.get("command", "")
+                          cwd = data.get("cwd", "/home/ubuntu")
+                          bg = data.get("background", False)
+
+                          env = os.environ.copy()
+                          env["DISPLAY"] = f":{display}"
+                          env["HOME"] = "/home/ubuntu"
+                          env["USER"] = "ubuntu"
+
+                          if bg:
+                              full_cmd = f"export DISPLAY=:{display}; cd {cwd} && ({cmd}) &"
+                              proc = subprocess.Popen(["su", "-", "ubuntu", "-c", full_cmd], env=env)
+                              result = {"stdout": "Started in background", "stderr": "", "exit_code": 0}
+                          else:
+                              full_cmd = f"export DISPLAY=:{display}; cd {cwd} && {cmd}"
+                              proc = subprocess.run(["su", "-", "ubuntu", "-c", full_cmd], env=env, capture_output=True, text=True, timeout=30)
+                              result = {"stdout": proc.stdout, "stderr": proc.stderr, "exit_code": proc.returncode}
+
+                          self.send_response(200)
+                          self.send_header("Access-Control-Allow-Origin", "*")
+                          self.send_header("Content-Type", "application/json")
+                          self.end_headers()
+                          self.wfile.write(json.dumps(result).encode("utf-8"))
+                      except Exception as e:
+                          self.send_response(500)
+                          self.send_header("Access-Control-Allow-Origin", "*")
+                          self.send_header("Content-Type", "application/json")
+                          self.end_headers()
+                          self.wfile.write(json.dumps({"stdout": "", "stderr": str(e), "exit_code": 1}).encode("utf-8"))
+                  else:
+                      self.send_response(404)
+                      self.end_headers()
+
+          server = http.server.ThreadingHTTPServer(("0.0.0.0", 3000), ExecHandler)
+          server.serve_forever()
+          EOF
+          sed -i 's/^          //' /usr/local/bin/frostfire-exec-server.py
+          chmod +x /usr/local/bin/frostfire-exec-server.py
+
+          cat <<'EOF' > /etc/systemd/system/frostfire-executor.service
+          [Unit]
+          Description=Frostfire Remote Executor API
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=root
+          ExecStart=/usr/bin/python3 /usr/local/bin/frostfire-exec-server.py
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          sed -i 's/^          //' /etc/systemd/system/frostfire-executor.service
+
+          # 5. Enable and start both persistent services
+          systemctl daemon-reload
+          systemctl enable --now frostfire-display
+          systemctl enable --now frostfire-executor
+
+          echo "[✓] Frostfire Persistent Display & Executor Services active!"
+
+  # --------------------------------------------------------------------------
+  # 5. Elastic IP (Static Public IPv4)
+  # --------------------------------------------------------------------------
+  PocElasticIP:
+    Type: AWS::EC2::EIP
+    Condition: CreateNewEIP
+    DeletionPolicy: Retain
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref PocInstance
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-eip'
+
+  PocEIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Condition: HasExistingEIP
+    Properties:
+      AllocationId: !Ref ExistingEipAllocationId
+      InstanceId: !Ref PocInstance
+
+Outputs:
+  HostPublicIP:
+    Description: Static Elastic IP of the 3-User Host
+    Value: !GetAtt PocInstance.PublicIp
+
+  WebUiUrl:
+    Description: Frostfire Web UI Entrypoint
+    Value: !Sub 'http://${PocInstance.PublicIp}:3000'
+
+  User1DesktopUrl:
+    Description: User 1 Desktop Stream (Display :1)
+    Value: !Sub 'http://${PocInstance.PublicIp}:6080/vnc.html?autoconnect=true&resize=remote'
+
+  User2DesktopUrl:
+    Description: User 2 Desktop Stream (Display :2)
+    Value: !Sub 'http://${PocInstance.PublicIp}:6081/vnc.html?token=user2&autoconnect=true&resize=remote'
+
+  User3DesktopUrl:
+    Description: User 3 Desktop Stream (Display :3)
+    Value: !Sub 'http://${PocInstance.PublicIp}:6081/vnc.html?token=user3&autoconnect=true&resize=remote'
+
+  MonthlyCostEstimate:
+    Description: Estimated AWS compute cost
+    Value: '~$60 - $120 / month (or ~$0.08 - $0.16 / hr if stopped when idle)'
