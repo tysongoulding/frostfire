@@ -1,0 +1,323 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Frostfire AWS: Bare-Metal Firecracker Hypervisor Host with Managed WebRTC STUN/TURN via Amazon Kinesis Video Streams'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: frostfire-aws
+    Description: Environment naming prefix for resources
+
+  InstanceType:
+    Type: String
+    Default: c6i.metal
+    AllowedValues:
+      - c6i.metal
+      - c7i.metal
+      - m6i.metal
+      - c5.metal
+      - m5.metal
+    Description: EC2 Bare Metal instance type required for native hardware /dev/kvm virtualization
+
+  VolumeSizeGB:
+    Type: Number
+    Default: 200
+    Description: Root EBS volume size in GB (gp3 SSD)
+
+  VpcCIDR:
+    Type: String
+    Default: 10.100.0.0/16
+    Description: CIDR block for the dedicated Frostfire VPC
+
+  PublicSubnetCIDR:
+    Type: String
+    Default: 10.100.1.0/24
+    Description: CIDR block for the Public Subnet
+
+  AllowedIngressCIDR:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: Client IP CIDR allowed to access Gateway, noVNC, and WebRTC ports
+
+Resources:
+  # ============================================================================
+  # 1. NETWORKING INFRASTRUCTURE
+  # ============================================================================
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc'
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-igw'
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PublicSubnetCIDR
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-subnet-public'
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-rt'
+
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref RouteTable
+
+  # ============================================================================
+  # 2. MANAGED STUN / TURN SERVICE (AMAZON KINESIS VIDEO STREAMS WEBRTC)
+  # ============================================================================
+  WebRTCSignalingChannel:
+    Type: AWS::KinesisVideo::SignalingChannel
+    Properties:
+      Name: !Sub '${EnvironmentName}-signaling-channel'
+      Type: SINGLE_MASTER
+      MessageTtlInSeconds: 60
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-signaling-channel'
+
+  # ============================================================================
+  # 3. SECURITY GROUPS (GATEWAY, VNC, STUN/TURN, WEBRTC UDP PORTS)
+  # ============================================================================
+  HypervisorSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Frostfire Firecracker Bare-Metal Host & WebRTC
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        # gRPC Agent Tunnel Gateway
+        - IpProtocol: tcp
+          FromPort: 50051
+          ToPort: 50051
+          CidrIp: !Ref AllowedIngressCIDR
+          Description: Frostfire gRPC Agent Tunnel Service
+        # noVNC Websockify primary & fork displays
+        - IpProtocol: tcp
+          FromPort: 6080
+          ToPort: 6081
+          CidrIp: !Ref AllowedIngressCIDR
+          Description: noVNC and token-multiplexed websockify
+        # KasmVNC WebRTC HTTPS & signaling
+        - IpProtocol: tcp
+          FromPort: 8444
+          ToPort: 8444
+          CidrIp: !Ref AllowedIngressCIDR
+          Description: KasmVNC WebRTC HTTPS interface
+        # STUN / TURN fallback ports
+        - IpProtocol: udp
+          FromPort: 3478
+          ToPort: 3478
+          CidrIp: !Ref AllowedIngressCIDR
+          Description: STUN/TURN standard port (UDP)
+        - IpProtocol: tcp
+          FromPort: 3478
+          ToPort: 3478
+          CidrIp: !Ref AllowedIngressCIDR
+          Description: STUN/TURN standard port (TCP)
+        # WebRTC dynamic media UDP range
+        - IpProtocol: udp
+          FromPort: 49152
+          ToPort: 65535
+          CidrIp: !Ref AllowedIngressCIDR
+          Description: WebRTC dynamic media UDP packet delivery
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+
+  # ============================================================================
+  # 4. IAM ROLE & POLICIES (SSM & KINESIS VIDEO STUN/TURN ICE PERMISSIONS)
+  # ============================================================================
+  HypervisorInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-hypervisor-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      Policies:
+        - PolicyName: KinesisVideoWebRTCIceServerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kinesisvideo:DescribeSignalingChannel
+                  - kinesisvideo:GetSignalingChannelEndpoint
+                  - kinesisvideo:GetIceServerConfig
+                  - kinesisvideo:ConnectAsMaster
+                  - kinesisvideo:ConnectAsViewer
+                Resource: !GetAtt WebRTCSignalingChannel.Arn
+
+  HypervisorInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${EnvironmentName}-hypervisor-profile'
+      Roles:
+        - !Ref HypervisorInstanceRole
+
+  # ============================================================================
+  # 5. BARE-METAL EC2 INSTANCE (KVM / FIRECRACKER HYPERVISOR)
+  # ============================================================================
+  HypervisorInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      SubnetId: !Ref PublicSubnet
+      IamInstanceProfile: !Ref HypervisorInstanceProfile
+      SecurityGroupIds:
+        - !Ref HypervisorSecurityGroup
+      # Ubuntu 24.04 LTS Noble Numbat dynamic AMI
+      ImageId: '{{resolve:ssm:/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id}}'
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: !Ref VolumeSizeGB
+            VolumeType: gp3
+            Iops: 6000
+            Throughput: 300
+            DeleteOnTermination: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-hypervisor-host'
+      UserData:
+        Fn::Base64: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec > >(tee /var/log/frostfire-cloud-init.log|logger -t frostfire-init -s 2>/dev/console) 2>&1
+
+          echo "=========================================================="
+          echo "🚀 Initializing Frostfire AWS Bare-Metal Hypervisor Host"
+          echo "=========================================================="
+
+          # 1. Update and install virtualization, bridge, and container dependencies
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils cpu-checker \
+            iptables iproute2 net-tools curl jq unzip awscli build-essential coturn
+
+          # 2. Verify KVM Hardware Acceleration on Bare Metal
+          echo "[+] Validating hardware KVM virtualization..."
+          kvm-ok || true
+          if [ -e /dev/kvm ]; then
+            chmod 666 /dev/kvm
+            usermod -aG kvm ubuntu
+            echo "[✓] Hardware /dev/kvm detected and active!"
+          else
+            echo "[!] WARNING: /dev/kvm not found. Ensure an EC2 .metal instance type is active."
+          fi
+
+          # 3. Install Firecracker v1.10.1 & Firectl
+          ARCH="$(uname -m)"
+          FC_VER="v1.10.1"
+          echo "[+] Installing Firecracker ${FC_VER}..."
+          curl -sSL "https://github.com/firecracker-microvm/firecracker/releases/download/${FC_VER}/firecracker-${FC_VER}-${ARCH}.tgz" -o /tmp/fc.tgz
+          tar -xzf /tmp/fc.tgz -C /usr/local/bin --strip-components=1 "release-${FC_VER}-${ARCH}/firecracker-${FC_VER}-${ARCH}"
+          ln -sf "/usr/local/bin/firecracker-${FC_VER}-${ARCH}" /usr/local/bin/firecracker
+          chmod +x /usr/local/bin/firecracker
+
+          # 4. Configure Networking & Bridge for MicroVM Tap Interfaces
+          mkdir -p /var/lib/frostfire /var/run/frostfire
+          sysctl -w net.ipv4.ip_forward=1
+          echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.d/99-frostfire.conf
+
+          # Setup bridge and NAT rule
+          PRIMARY_IFACE=$(ip -4 route show default | awk '{print $5}' | head -n1)
+          iptables -t nat -A POSTROUTING -o "${PRIMARY_IFACE}" -j MASQUERADE || true
+
+          # 5. Install Helper Script to Fetch Managed STUN/TURN ICE Servers from Kinesis Video Streams
+          cat <<'EOF' > /usr/local/bin/get-aws-ice-servers.sh
+          #!/usr/bin/env bash
+          # Queries Amazon Kinesis Video Streams for Managed STUN / TURN Credentials
+          set -euo pipefail
+          REGION="${AWS_DEFAULT_REGION:-$(curl -s http://169.254.169.254/latest/meta-data/placement/region)}"
+          CHANNEL_ARN="${1}"
+
+          # 1. Query Signaling Channel HTTPS Endpoint
+          ENDPOINT=$(aws kinesisvideo get-signaling-channel-endpoint \
+            --channel-arn "${CHANNEL_ARN}" \
+            --single-master-channel-endpoint-configuration "Protocols=WSS,HTTPS,Role=MASTER" \
+            --region "${REGION}" \
+            --output text --query 'ResourceEndpointList[?Protocol==`HTTPS`].ResourceEndpoint')
+
+          # 2. Retrieve ICE Server (STUN + TURN) Configuration
+          aws kinesis-video-signaling get-ice-server-config \
+            --channel-arn "${CHANNEL_ARN}" \
+            --endpoint "${ENDPOINT}" \
+            --service-name-override "turn" \
+            --region "${REGION}"
+          EOF
+          chmod +x /usr/local/bin/get-aws-ice-servers.sh
+
+          echo "[✓] Frostfire AWS Hypervisor Node initialization complete!"
+
+Outputs:
+  HypervisorInstanceId:
+    Description: Bare-Metal Hypervisor EC2 Instance ID
+    Value: !Ref HypervisorInstance
+
+  HypervisorPublicIP:
+    Description: Public IP of the Bare-Metal Hypervisor
+    Value: !GetAtt HypervisorInstance.PublicIp
+
+  WebRTCSignalingChannelArn:
+    Description: ARN of the AWS Kinesis Video Streams Managed WebRTC Signaling Channel (STUN/TURN)
+    Value: !GetAtt WebRTCSignalingChannel.Arn
+
+  WebRTCSignalingChannelName:
+    Description: Name of the AWS Kinesis Video Streams Managed Signaling Channel
+    Value: !Ref WebRTCSignalingChannel
+
+  GatewayUrl:
+    Description: Frostfire gRPC Agent Tunnel Edge Gateway Address
+    Value: !Sub 'http://${HypervisorInstance.PublicIp}:50051'
+
+  PrimaryNoVNCUrl:
+    Description: Primary User Desktop Web Interface (Display :1)
+    Value: !Sub 'http://${HypervisorInstance.PublicIp}:6080/vnc.html?autoconnect=true&resize=remote'
+
+  TokenMultiplexedNoVNCUrl:
+    Description: Fork Agent Displays (Display :4, :7, etc.)
+    Value: !Sub 'http://${HypervisorInstance.PublicIp}:6081/vnc.html?autoconnect=true&resize=remote'

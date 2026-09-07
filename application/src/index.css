@@ -1,0 +1,391 @@
+@import "katex/dist/katex.min.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-main: 'Ubuntu', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --bg-main: #121212;
+  --bg-card: #1E1E1E;
+  --text-main: #F5F5F5;
+  --border-main: #2E2E2E;
+  --color-accent: #38BDF8;
+  --color-highlight: #FF3366;
+
+  /* Showcase and Theme Tokens */
+  --bg: #121212;
+  --surface: #1E1E1E;
+  --text-primary: #F5F5F5;
+  --text-muted: #A3A3A3;
+  --accent-primary: #38BDF8;
+  --accent-secondary: #FF3366;
+  --border: #2E2E2E;
+}
+
+*, ::before, ::after {
+  border-color: var(--border);
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* 1. Default (Frostfire - Pure Neutral Grayscale Base with Matched Frost Blue) */
+[data-theme="frostfire"][data-mode="dark"] {
+  --bg: #121212;
+  --surface: #1E1E1E;
+  --text-primary: #F5F5F5;
+  --text-muted: #A3A3A3;
+  --accent-primary: #38BDF8;
+  --accent-secondary: #FF3366;
+  --border: #2E2E2E;
+  --bg-main: #121212;
+  --bg-card: #1E1E1E;
+  --text-main: #F5F5F5;
+  --border-main: #2E2E2E;
+  --color-accent: #38BDF8;
+  --color-highlight: #FF3366;
+}
+[data-theme="frostfire"][data-mode="light"] {
+  --bg: #F5F5F5;
+  --surface: #FFFFFF;
+  --text-primary: #171717;
+  --text-muted: #737373;
+  --accent-primary: #0284C7;
+  --accent-secondary: #E11D48;
+  --border: #E5E5E5;
+  --bg-main: #F5F5F5;
+  --bg-card: #FFFFFF;
+  --text-main: #171717;
+  --border-main: #E5E5E5;
+  --color-accent: #0284C7;
+  --color-highlight: #E11D48;
+}
+
+/* 2. Frost (Blue Focus) */
+[data-theme="frost"][data-mode="dark"] {
+  --bg: #0A0E17;
+  --surface: #121B2D;
+  --text-primary: #FFFFFF;
+  --text-muted: #8B9BB4;
+  --accent-primary: #38BDF8;
+  --accent-secondary: #EF4444;
+  --border: #1E2E4A;
+  --bg-main: #0A0E17;
+  --bg-card: #121B2D;
+  --text-main: #FFFFFF;
+  --border-main: #1E2E4A;
+  --color-accent: #38BDF8;
+  --color-highlight: #EF4444;
+}
+[data-theme="frost"][data-mode="light"] {
+  --bg: #F0F9FF;
+  --surface: #FFFFFF;
+  --text-primary: #0C4A6E;
+  --text-muted: #0369A1;
+  --accent-primary: #0284C7;
+  --accent-secondary: #DC2626;
+  --border: #BAE6FD;
+  --bg-main: #F0F9FF;
+  --bg-card: #FFFFFF;
+  --text-main: #0C4A6E;
+  --border-main: #BAE6FD;
+  --color-accent: #0284C7;
+  --color-highlight: #DC2626;
+}
+
+/* 3. Fire (Red Focus) */
+[data-theme="fire"][data-mode="dark"] {
+  --bg: #0F0C10;
+  --surface: #1B141D;
+  --text-primary: #F8FAFC;
+  --text-muted: #A198A7;
+  --accent-primary: #FF2A5F;
+  --accent-secondary: #00D8F6;
+  --border: #322135;
+  --bg-main: #0F0C10;
+  --bg-card: #1B141D;
+  --text-main: #F8FAFC;
+  --border-main: #322135;
+  --color-accent: #FF2A5F;
+  --color-highlight: #00D8F6;
+}
+[data-theme="fire"][data-mode="light"] {
+  --bg: #FFF1F2;
+  --surface: #FFFFFF;
+  --text-primary: #881337;
+  --text-muted: #9F1239;
+  --accent-primary: #E11D48;
+  --accent-secondary: #0284C7;
+  --border: #FECDD3;
+  --bg-main: #FFF1F2;
+  --bg-card: #FFFFFF;
+  --text-main: #881337;
+  --border-main: #FECDD3;
+  --color-accent: #E11D48;
+  --color-highlight: #0284C7;
+}
+
+::selection {
+  background-color: var(--color-highlight) !important;
+  color: #ffffff !important;
+}
+
+html,
+body,
+#root,
+input,
+textarea,
+select,
+button {
+  font-family: 'Ubuntu', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden !important;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* ==========================================================================
+   Universal Dynamic Theme Surface Binding (Light, Dark, Presets & Custom)
+   ========================================================================== */
+
+.bg-\[\#0d1117\],
+.bg-\[\#101010\] {
+  background-color: var(--bg-main) !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.bg-\[\#161b22\],
+.bg-\[\#181818\] {
+  background-color: var(--bg-card) !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.border-\[\#30363d\],
+.border-\[\#282828\] {
+  border-color: var(--border-main) !important;
+  transition: border-color 0.15s ease;
+}
+
+.text-\[\#c9d1d9\],
+.text-\[\#cccccc\] {
+  color: var(--text-main) !important;
+  transition: color 0.15s ease;
+}
+
+/* Dark Mode Scheme */
+html.dark {
+  color-scheme: dark;
+}
+
+/* Light Mode Overrides */
+html.light {
+  color-scheme: light;
+}
+
+html.light .bg-\[\#21262d\],
+html.light .bg-\[\#282828\] {
+  background-color: #f3f4f6 !important;
+}
+
+html.light .text-\[\#8b949e\] {
+  color: #4b5563 !important;
+}
+
+html.light .text-white {
+  color: #111827 !important;
+}
+
+/* Light Mode Hover & Interactive Surface Overrides */
+html.light .hover\:bg-\[\#161b22\]:hover,
+html.light .hover\:bg-\[\#21262d\]:hover,
+html.light .hover\:bg-\[\#30363d\]:hover,
+html.light .hover\:bg-\[\#0d1117\]:hover {
+  background-color: #e5e7eb !important;
+  color: #111827 !important;
+}
+
+html.light .hover\:text-white:hover,
+html.light .group:hover .group-hover\:text-white,
+html.light .hover\:text-\[\#c9d1d9\]:hover {
+  color: #111827 !important;
+}
+
+html.light .hover\:border-\[\#8b949e\]:hover,
+html.light .hover\:border-\[\#30363d\]:hover {
+  border-color: #d1d5db !important;
+}
+
+html.light input,
+html.light textarea,
+html.light select {
+  background-color: var(--bg-card) !important;
+  color: var(--text-main) !important;
+  border-color: var(--border-main) !important;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #9ca3af !important;
+}
+
+/* Vertical scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 0px;
+}
+
+/* Hide horizontal scrollbar everywhere */
+::-webkit-scrollbar:horizontal {
+  display: none !important;
+  height: 0px !important;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-main);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent);
+}
+
+/* No-scrollbar utilities */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ==========================================================================
+   Flat Canvas Markdown Content Typography
+   ========================================================================== */
+.markdown-content {
+  color: var(--text-main);
+  line-height: 1.7;
+}
+
+.markdown-content p {
+  margin-bottom: 0.85rem;
+}
+
+.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4 {
+  color: #f0f6fc;
+  font-weight: 600;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.35;
+}
+
+.markdown-content h1 { font-size: 1.25rem; }
+.markdown-content h2 { font-size: 1.1rem; }
+.markdown-content h3 { font-size: 0.95rem; }
+.markdown-content h4 { font-size: 0.875rem; }
+
+.markdown-content ul {
+  list-style-type: disc;
+  padding-left: 1.35rem;
+  margin-bottom: 0.85rem;
+}
+
+.markdown-content ol {
+  list-style-type: decimal;
+  padding-left: 1.35rem;
+  margin-bottom: 0.85rem;
+}
+
+.markdown-content li {
+  margin-bottom: 0.3rem;
+}
+
+.markdown-content a {
+  color: #58a6ff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-content a:hover {
+  color: #79c0ff;
+}
+
+.markdown-content strong {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.markdown-content blockquote {
+  border-left: 3px solid #30363d;
+  padding-left: 0.85rem;
+  margin-left: 0;
+  margin-bottom: 0.85rem;
+  color: #8b949e;
+  font-style: italic;
+}
+
+.markdown-content hr {
+  border: none;
+  border-top: 1px solid #30363d;
+  margin: 1.25rem 0;
+}
+
+.markdown-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.85rem;
+  font-size: 0.8125rem;
+}
+
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid #30363d;
+  padding: 0.45rem 0.65rem;
+  text-align: left;
+}
+
+.markdown-content th {
+  background-color: #161b22;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.markdown-content ul.contains-task-list {
+  list-style-type: none;
+  padding-left: 0.25rem;
+}
+
+.markdown-content li.task-list-item {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 0.35rem;
+}
+
+
