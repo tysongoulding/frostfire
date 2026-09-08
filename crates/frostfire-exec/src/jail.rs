@@ -1,8 +1,8 @@
 //! Workspace containment jail enforcing path boundaries and preventing directory traversal attacks.
 
-use std::path::{Path, PathBuf};
 #[cfg(windows)]
 use std::path::Component;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 /// Errors produced during jail boundary enforcement and path resolution.
@@ -289,7 +289,8 @@ mod tests {
 
     #[test]
     fn test_jail_root_validation() {
-        let temp_dir = std::env::temp_dir().join(format!("frostfire_jail_test_{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("frostfire_jail_test_{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&temp_dir).unwrap();
 
         let jail = WorkspaceJail::new(&temp_dir).unwrap();
@@ -309,7 +310,8 @@ mod tests {
 
     #[test]
     fn test_traversal_attacks_prevented() {
-        let temp_dir = std::env::temp_dir().join(format!("frostfire_jail_traversal_{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("frostfire_jail_traversal_{}", uuid::Uuid::new_v4()));
         let inner = temp_dir.join("workspace");
         fs::create_dir_all(&inner).unwrap();
 
@@ -337,7 +339,8 @@ mod tests {
 
     #[test]
     fn test_validate_cwd() {
-        let temp_dir = std::env::temp_dir().join(format!("frostfire_jail_cwd_{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("frostfire_jail_cwd_{}", uuid::Uuid::new_v4()));
         let sub_dir = temp_dir.join("subdir");
         fs::create_dir_all(&sub_dir).unwrap();
 
@@ -349,7 +352,10 @@ mod tests {
 
         // Valid sub dir
         let valid_cwd = jail.validate_cwd(Some(&sub_dir)).unwrap();
-        assert_eq!(valid_cwd, normalize_path_prefix(&fs::canonicalize(&sub_dir).unwrap()));
+        assert_eq!(
+            valid_cwd,
+            normalize_path_prefix(&fs::canonicalize(&sub_dir).unwrap())
+        );
 
         // File as cwd must fail
         let file_path = temp_dir.join("file.txt");
@@ -364,7 +370,8 @@ mod tests {
 
     #[test]
     fn test_allowed_paths() {
-        let temp_dir = std::env::temp_dir().join(format!("frostfire_jail_allowed_{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("frostfire_jail_allowed_{}", uuid::Uuid::new_v4()));
         let root = temp_dir.join("root");
         let external = temp_dir.join("external_allowed");
         fs::create_dir_all(&root).unwrap();
@@ -388,4 +395,3 @@ mod tests {
         let _ = fs::remove_dir_all(&temp_dir);
     }
 }
-

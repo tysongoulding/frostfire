@@ -1,9 +1,9 @@
-use std::path::Path;
-use std::sync::{Arc, Mutex};
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 use thiserror::Error;
 
 pub const GENESIS_HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
@@ -101,7 +101,8 @@ impl MerkleAuditLedger {
         let path = path.as_ref();
         if let Some(parent) = path.parent() {
             if !parent.exists() {
-                std::fs::create_dir_all(parent).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
             }
         }
         let conn = Connection::open(path)?;
@@ -143,14 +144,27 @@ impl MerkleAuditLedger {
     }
 
     /// Append an audit event to the ledger with the raw payload bytes.
-    pub fn append(&self, agent_id: &str, action_type: &str, payload: &[u8]) -> Result<AuditEntry, LedgerError> {
+    pub fn append(
+        &self,
+        agent_id: &str,
+        action_type: &str,
+        payload: &[u8],
+    ) -> Result<AuditEntry, LedgerError> {
         let payload_hash = hash_payload(payload);
         self.append_with_hash(agent_id, action_type, &payload_hash)
     }
 
     /// Append an audit event to the ledger using a pre-computed SHA-256 payload hash.
-    pub fn append_with_hash(&self, agent_id: &str, action_type: &str, payload_hash: &str) -> Result<AuditEntry, LedgerError> {
-        let mut conn = self.conn.lock().map_err(|_| LedgerError::LockError("Failed to lock DB connection".into()))?;
+    pub fn append_with_hash(
+        &self,
+        agent_id: &str,
+        action_type: &str,
+        payload_hash: &str,
+    ) -> Result<AuditEntry, LedgerError> {
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|_| LedgerError::LockError("Failed to lock DB connection".into()))?;
         let tx = conn.transaction()?;
 
         let last_entry: Option<(i64, String)> = tx
@@ -167,7 +181,14 @@ impl MerkleAuditLedger {
         };
 
         let timestamp = Utc::now().to_rfc3339();
-        let entry_hash = compute_entry_hash(next_id, &timestamp, agent_id, action_type, payload_hash, &prev_hash);
+        let entry_hash = compute_entry_hash(
+            next_id,
+            &timestamp,
+            agent_id,
+            action_type,
+            payload_hash,
+            &prev_hash,
+        );
 
         tx.execute(
             "INSERT INTO audit_ledger (entry_id, timestamp, agent_id, action_type, payload_hash, previous_hash, entry_hash)
@@ -190,7 +211,10 @@ impl MerkleAuditLedger {
 
     /// Retrieve an audit entry by its sequential ID.
     pub fn get_entry(&self, entry_id: i64) -> Result<Option<AuditEntry>, LedgerError> {
-        let conn = self.conn.lock().map_err(|_| LedgerError::LockError("Failed to lock DB connection".into()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| LedgerError::LockError("Failed to lock DB connection".into()))?;
         let entry = conn
             .query_row(
                 "SELECT entry_id, timestamp, agent_id, action_type, payload_hash, previous_hash, entry_hash
@@ -204,7 +228,10 @@ impl MerkleAuditLedger {
 
     /// Retrieve the most recently appended audit entry.
     pub fn get_latest_entry(&self) -> Result<Option<AuditEntry>, LedgerError> {
-        let conn = self.conn.lock().map_err(|_| LedgerError::LockError("Failed to lock DB connection".into()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| LedgerError::LockError("Failed to lock DB connection".into()))?;
         let entry = conn
             .query_row(
                 "SELECT entry_id, timestamp, agent_id, action_type, payload_hash, previous_hash, entry_hash
@@ -218,7 +245,10 @@ impl MerkleAuditLedger {
 
     /// Retrieve a range of audit entries for inspection or synchronization.
     pub fn get_entries(&self, offset: usize, limit: usize) -> Result<Vec<AuditEntry>, LedgerError> {
-        let conn = self.conn.lock().map_err(|_| LedgerError::LockError("Failed to lock DB connection".into()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| LedgerError::LockError("Failed to lock DB connection".into()))?;
         let mut stmt = conn.prepare(
             "SELECT entry_id, timestamp, agent_id, action_type, payload_hash, previous_hash, entry_hash
              FROM audit_ledger ORDER BY entry_id ASC LIMIT ?1 OFFSET ?2",
@@ -234,7 +264,10 @@ impl MerkleAuditLedger {
 
     /// Total number of entries in the ledger.
     pub fn count(&self) -> Result<usize, LedgerError> {
-        let conn = self.conn.lock().map_err(|_| LedgerError::LockError("Failed to lock DB connection".into()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| LedgerError::LockError("Failed to lock DB connection".into()))?;
         let count: i64 = conn.query_row("SELECT COUNT(*) FROM audit_ledger", [], |r| r.get(0))?;
         Ok(count as usize)
     }
@@ -247,7 +280,10 @@ impl MerkleAuditLedger {
     /// 3. Each entry's `previous_hash` matches the preceding record's `entry_hash`.
     /// 4. Recomputed entry SHA-256 matches the stored `entry_hash` exactly.
     pub fn verify_integrity(&self) -> Result<IntegrityReport, LedgerError> {
-        let conn = self.conn.lock().map_err(|_| LedgerError::LockError("Failed to lock DB connection".into()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| LedgerError::LockError("Failed to lock DB connection".into()))?;
         let mut stmt = conn.prepare(
             "SELECT entry_id, timestamp, agent_id, action_type, payload_hash, previous_hash, entry_hash
              FROM audit_ledger ORDER BY entry_id ASC",
@@ -339,9 +375,14 @@ impl MerkleAuditLedger {
 
     /// Compute a Merkle tree root over all entry hashes in the ledger.
     pub fn compute_merkle_root(&self) -> Result<Option<String>, LedgerError> {
-        let conn = self.conn.lock().map_err(|_| LedgerError::LockError("Failed to lock DB connection".into()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| LedgerError::LockError("Failed to lock DB connection".into()))?;
         let mut stmt = conn.prepare("SELECT entry_hash FROM audit_ledger ORDER BY entry_id ASC")?;
-        let hashes: Vec<String> = stmt.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?;
+        let hashes: Vec<String> = stmt
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
 
         if hashes.is_empty() {
             return Ok(None);
@@ -402,15 +443,21 @@ mod tests {
         let ledger = MerkleAuditLedger::open_in_memory().unwrap();
         assert_eq!(ledger.count().unwrap(), 0);
 
-        let e1 = ledger.append("agent-alpha", "fs_read", b"path=/etc/hosts").unwrap();
+        let e1 = ledger
+            .append("agent-alpha", "fs_read", b"path=/etc/hosts")
+            .unwrap();
         assert_eq!(e1.entry_id, 1);
         assert_eq!(e1.previous_hash, GENESIS_HASH);
 
-        let e2 = ledger.append("agent-beta", "exec_cmd", b"cmd=cargo check").unwrap();
+        let e2 = ledger
+            .append("agent-beta", "exec_cmd", b"cmd=cargo check")
+            .unwrap();
         assert_eq!(e2.entry_id, 2);
         assert_eq!(e2.previous_hash, e1.entry_hash);
 
-        let e3 = ledger.append("agent-alpha", "fs_write", b"path=out.txt;data=hello").unwrap();
+        let e3 = ledger
+            .append("agent-alpha", "fs_write", b"path=out.txt;data=hello")
+            .unwrap();
         assert_eq!(e3.entry_id, 3);
         assert_eq!(e3.previous_hash, e2.entry_hash);
 
@@ -429,9 +476,15 @@ mod tests {
     #[test]
     fn test_merkle_ledger_tamper_detection_modified_payload() {
         let ledger = MerkleAuditLedger::open_in_memory().unwrap();
-        ledger.append("agent-1", "action-1", b"original-payload-1").unwrap();
-        ledger.append("agent-2", "action-2", b"original-payload-2").unwrap();
-        ledger.append("agent-3", "action-3", b"original-payload-3").unwrap();
+        ledger
+            .append("agent-1", "action-1", b"original-payload-1")
+            .unwrap();
+        ledger
+            .append("agent-2", "action-2", b"original-payload-2")
+            .unwrap();
+        ledger
+            .append("agent-3", "action-3", b"original-payload-3")
+            .unwrap();
 
         // Tamper directly with the SQLite database row for entry 2
         {
@@ -467,7 +520,9 @@ mod tests {
         {
             let conn = ledger.raw_connection();
             let locked = conn.lock().unwrap();
-            locked.execute("DELETE FROM audit_ledger WHERE entry_id = 2", []).unwrap();
+            locked
+                .execute("DELETE FROM audit_ledger WHERE entry_id = 2", [])
+                .unwrap();
         }
 
         let report = ledger.verify_integrity().unwrap();

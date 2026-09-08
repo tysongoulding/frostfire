@@ -23,18 +23,20 @@ interface ChatState {
 const STORAGE_KEY = "frostfire-chats";
 const LEGACY_STORAGE_KEY = "rho-lota-chats";
 
-const DEFAULT_CHATS: ChatItem[] = [
-  {
-    id: "chat-main",
-    title: "New Conversation",
-    createdAt: Date.now(),
-    agentId: "coder",
-    messages: [],
-  },
-];
+function createDefaultChats(): ChatItem[] {
+  return [
+    {
+      id: "chat-main",
+      title: "New Conversation",
+      createdAt: Date.now(),
+      agentId: "coder",
+      messages: [],
+    },
+  ];
+}
 
 function loadChats(): ChatItem[] {
-  if (typeof window === "undefined") return DEFAULT_CHATS;
+  if (typeof window === "undefined") return createDefaultChats();
   try {
     const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
     if (raw) {
@@ -44,7 +46,7 @@ function loadChats(): ChatItem[] {
       }
     }
   } catch {}
-  return DEFAULT_CHATS;
+  return createDefaultChats();
 }
 
 export const useChatStore = create<ChatState>((set) => ({

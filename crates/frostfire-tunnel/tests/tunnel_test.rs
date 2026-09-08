@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-use std::time::Duration;
 use frostfire_proto::tunnel::{
     tunnel_client_frame, tunnel_server_frame, ApplyPatch, ApprovalRequest, ApprovalResponse,
     ExecCommand, McpInvokeRequest, McpInvokeResponse, PatchResult, TerminalInputChunk,
@@ -7,6 +5,8 @@ use frostfire_proto::tunnel::{
     WebAuthnCeremonyResponse,
 };
 use frostfire_tunnel::{MockGatewayServer, TunnelClient, TunnelConfig};
+use std::collections::HashMap;
+use std::time::Duration;
 
 #[tokio::test]
 async fn test_bidirectional_frame_transmission() {
@@ -36,7 +36,10 @@ async fn test_bidirectional_frame_transmission() {
         })),
     };
 
-    client.send(client_frame.clone()).await.expect("send client frame");
+    client
+        .send(client_frame.clone())
+        .await
+        .expect("send client frame");
 
     let received_at_server = server
         .recv_client_frame()
@@ -107,7 +110,9 @@ async fn test_heartbeat_ping_pong() {
     let mut got_heartbeat_ack = false;
 
     while start.elapsed() < timeout {
-        if let Ok(Some(frame)) = tokio::time::timeout(Duration::from_millis(500), client.recv()).await {
+        if let Ok(Some(frame)) =
+            tokio::time::timeout(Duration::from_millis(500), client.recv()).await
+        {
             if let Some(tunnel_server_frame::Payload::Heartbeat(hb)) = frame.payload {
                 if hb.is_ack && hb.agent_id == "agent-hb-test" {
                     got_heartbeat_ack = true;
@@ -117,7 +122,10 @@ async fn test_heartbeat_ping_pong() {
         }
     }
 
-    assert!(got_heartbeat_ack, "Client should receive heartbeat ack from mock server");
+    assert!(
+        got_heartbeat_ack,
+        "Client should receive heartbeat ack from mock server"
+    );
 
     client.close().await;
     server.stop().await;
@@ -137,7 +145,9 @@ async fn test_reconnect_exponential_backoff() {
         )
         .with_connect_timeout(Duration::from_secs(5));
 
-    let client = TunnelClient::connect(config).await.expect("initial connect");
+    let client = TunnelClient::connect(config)
+        .await
+        .expect("initial connect");
     assert!(client.is_connected());
 
     // Send a frame before disconnect
@@ -151,7 +161,10 @@ async fn test_reconnect_exponential_backoff() {
         .await
         .expect("send frame");
 
-    let rec = server.recv_client_frame().await.expect("recv pre-disconnect frame");
+    let rec = server
+        .recv_client_frame()
+        .await
+        .expect("recv pre-disconnect frame");
     assert_eq!(rec.frame_id, "pre-disconnect-1");
 
     // Trigger disconnect from server side
@@ -160,7 +173,10 @@ async fn test_reconnect_exponential_backoff() {
     // Wait for client to reconnect automatically
     tokio::time::sleep(Duration::from_millis(200)).await;
     let reconnected = client.wait_connected(Duration::from_secs(5)).await;
-    assert!(reconnected.is_ok(), "Client should have reconnected successfully");
+    assert!(
+        reconnected.is_ok(),
+        "Client should have reconnected successfully"
+    );
     assert!(client.is_connected());
 
     // Verify frames can still be sent across reconnected tunnel
@@ -174,7 +190,10 @@ async fn test_reconnect_exponential_backoff() {
         .await
         .expect("send post-reconnect frame");
 
-    let rec_post = server.recv_client_frame().await.expect("recv post-reconnect frame");
+    let rec_post = server
+        .recv_client_frame()
+        .await
+        .expect("recv post-reconnect frame");
     assert_eq!(rec_post.frame_id, "post-reconnect-1");
 
     client.close().await;

@@ -73,8 +73,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   onCopyConversationId,
   onHideFromSidebar,
   onDeleteItem,
-  userName = 'User 1',
-  userSubtitle = 'Online',
+  userName = 'Default User',
+  userSubtitle = 'Active',
 }) => {
   const { users, activeUserId, switchUser, getActiveUser } = useUserStore();
   const currentProfile = getActiveUser();
@@ -149,6 +149,13 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
     });
     return filtered;
   }, [items, searchQuery]);
+
+  const activeInitials = (activeName || 'U')
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
     <aside className="w-full bg-theme-surface flex flex-col h-full select-none relative overflow-hidden">
@@ -238,7 +245,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-theme-bg border border-theme-border hover:border-theme-accent-primary/60 transition-all text-left cursor-pointer group"
           >
             <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-theme-accent-primary to-theme-accent-secondary flex items-center justify-center text-black font-bold text-xs shadow-xs shrink-0 group-hover:scale-105 transition-transform">
-              {activeUserId === 'user1' ? 'U1' : activeUserId === 'user2' ? 'U2' : activeUserId === 'user3' ? 'U3' : <User className="w-4 h-4 text-black" />}
+              {activeInitials}
             </div>
             <div className="flex-1 min-w-0">
               <span className="block text-xs font-semibold text-theme-text-primary truncate">
@@ -276,7 +283,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                 <div className="px-2.5 py-2 border-b border-zinc-800 flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2 min-w-0">
                     <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-theme-accent-primary to-theme-accent-secondary flex items-center justify-center text-black font-bold text-[10px] shrink-0">
-                      {activeUserId === 'user1' ? 'U1' : activeUserId === 'user2' ? 'U2' : 'U3'}
+                      {activeInitials}
                     </div>
                     <div className="min-w-0">
                       <span className="block text-xs font-semibold text-white truncate leading-tight">
@@ -358,16 +365,20 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                     <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
                       Select User Account
                     </span>
-                    <span className="text-[9px] bg-theme-accent-primary/20 text-theme-accent-primary px-1.5 py-0.5 rounded font-mono font-semibold">
-                      POC
+                    <span className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded font-mono font-semibold">
+                      Live
                     </span>
                   </div>
 
                   <div className="space-y-1">
                     {users.map((u) => {
                       const isActive = u.id === activeUserId;
-                      const userNum = u.id === 'user1' ? '1' : u.id === 'user2' ? '2' : '3';
-                      const userLabel = u.id === 'user1' ? 'User 1' : u.id === 'user2' ? 'User 2' : 'User 3';
+                      const userInitials = (u.name || 'User')
+                        .split(' ')
+                        .map((n) => n[0])
+                        .join('')
+                        .slice(0, 2)
+                        .toUpperCase();
                       return (
                         <button
                           key={u.id}
@@ -391,15 +402,12 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                                   : 'bg-zinc-900 border border-zinc-700 text-white group-hover:scale-105 group-hover:border-theme-accent-primary/50'
                               }`}
                             >
-                              U{userNum}
+                              {userInitials}
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] font-mono font-semibold text-theme-accent-primary">
-                                  {userLabel}
-                                </span>
                                 <span className="block text-xs font-semibold text-zinc-100 truncate leading-tight group-hover:text-theme-accent-primary transition-colors">
-                                  · {u.name}
+                                  {u.name}
                                 </span>
                               </div>
                               <span className="block text-[10px] text-zinc-400 truncate leading-tight">
@@ -408,13 +416,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">
-                            {isActive ? (
+                            {isActive && (
                               <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-mono font-medium">
                                 Active
-                              </span>
-                            ) : (
-                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-700 font-mono">
-                                3 Agents
                               </span>
                             )}
                           </div>

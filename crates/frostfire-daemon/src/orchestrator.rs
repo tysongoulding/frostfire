@@ -83,7 +83,10 @@ impl Orchestrator {
     }
 
     /// Helper to construct a client frame with unified metadata, eliminating duplication.
-    fn make_client_frame(&self, payload: tunnel::tunnel_client_frame::Payload) -> TunnelClientFrame {
+    fn make_client_frame(
+        &self,
+        payload: tunnel::tunnel_client_frame::Payload,
+    ) -> TunnelClientFrame {
         TunnelClientFrame {
             frame_id: uuid::Uuid::new_v4().to_string(),
             timestamp_unix_ms: chrono::Utc::now().timestamp_millis(),
@@ -159,16 +162,19 @@ impl Orchestrator {
             let l = self.ledger.lock().await;
             if let Err(e) = l.append(&self.agent_id, "exec_command", &payload_data) {
                 error!("Audit ledger write failure: {}", e);
-                let err_frame = self.make_client_frame(tunnel::tunnel_client_frame::Payload::TerminalOutput(
-                    TerminalOutputChunk {
+                let err_frame = self.make_client_frame(
+                    tunnel::tunnel_client_frame::Payload::TerminalOutput(TerminalOutputChunk {
                         session_id: session_id.clone(),
-                        data: format!("Security error: Audit ledger failed to record action: {}\n", e)
-                            .into_bytes(),
+                        data: format!(
+                            "Security error: Audit ledger failed to record action: {}\n",
+                            e
+                        )
+                        .into_bytes(),
                         is_stderr: true,
                         is_eof: true,
                         exit_code: -1,
-                    },
-                ));
+                    }),
+                );
                 let _ = self.client_tx.send(err_frame).await;
                 return;
             }
@@ -185,16 +191,16 @@ impl Orchestrator {
             Ok(dir) => dir,
             Err(e) => {
                 error!("CWD jail rejection: {}", e);
-                let err_chunk = self.make_client_frame(tunnel::tunnel_client_frame::Payload::TerminalOutput(
-                    TerminalOutputChunk {
+                let err_chunk = self.make_client_frame(
+                    tunnel::tunnel_client_frame::Payload::TerminalOutput(TerminalOutputChunk {
                         session_id: session_id.clone(),
                         data: format!("Security error: CWD rejected by workspace jail: {}\n", e)
                             .into_bytes(),
                         is_stderr: true,
                         is_eof: true,
                         exit_code: -1,
-                    },
-                ));
+                    }),
+                );
                 let _ = self.client_tx.send(err_chunk).await;
                 return;
             }
@@ -255,15 +261,15 @@ impl Orchestrator {
                 });
             }
             Err(e) => {
-                let err_chunk = self.make_client_frame(tunnel::tunnel_client_frame::Payload::TerminalOutput(
-                    TerminalOutputChunk {
+                let err_chunk = self.make_client_frame(
+                    tunnel::tunnel_client_frame::Payload::TerminalOutput(TerminalOutputChunk {
                         session_id,
                         data: format!("Failed to spawn process: {}\n", e).into_bytes(),
                         is_stderr: true,
                         is_eof: true,
                         exit_code: -1,
-                    },
-                ));
+                    }),
+                );
                 let _ = self.client_tx.send(err_chunk).await;
             }
         }
@@ -271,9 +277,11 @@ impl Orchestrator {
 
     async fn handle_terminal_input(&self, input: TerminalInputChunk) {
         if input.resize {
-            let _ = self
-                .pty_mux
-                .resize(&input.session_id, input.pty_rows as u16, input.pty_cols as u16);
+            let _ = self.pty_mux.resize(
+                &input.session_id,
+                input.pty_rows as u16,
+                input.pty_cols as u16,
+            );
         } else if input.is_eof {
             let _ = self.pty_mux.terminate(&input.session_id);
         } else if !input.data.is_empty() {
@@ -360,7 +368,8 @@ impl Orchestrator {
     }
 
     async fn send_patch_result(&self, result: PatchResult) {
-        let frame = self.make_client_frame(tunnel::tunnel_client_frame::Payload::PatchResult(result));
+        let frame =
+            self.make_client_frame(tunnel::tunnel_client_frame::Payload::PatchResult(result));
         let _ = self.client_tx.send(frame).await;
     }
 
@@ -435,7 +444,8 @@ impl Orchestrator {
             responded_at_unix: chrono::Utc::now().timestamp(),
         };
 
-        let frame = self.make_client_frame(tunnel::tunnel_client_frame::Payload::ApprovalResponse(resp));
+        let frame =
+            self.make_client_frame(tunnel::tunnel_client_frame::Payload::ApprovalResponse(resp));
         let _ = self.client_tx.send(frame).await;
     }
 
@@ -505,7 +515,8 @@ impl Orchestrator {
     }
 
     async fn send_webauthn_response(&self, resp: WebAuthnCeremonyResponse) {
-        let frame = self.make_client_frame(tunnel::tunnel_client_frame::Payload::WebauthnResponse(resp));
+        let frame =
+            self.make_client_frame(tunnel::tunnel_client_frame::Payload::WebauthnResponse(resp));
         let _ = self.client_tx.send(frame).await;
     }
 }
@@ -516,18 +527,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_orchestrator_webauthn_ceremony_handling() {
-        let dir = std::env::temp_dir().join(format!("frostfire-daemon-test-{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("frostfire-daemon-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let (tx, mut rx) = mpsc::channel(16);
         let config = AppConfig::default();
 
-        let orch = Orchestrator::new(
-            "agent-webauthn-test".into(),
-            dir.clone(),
-            &config,
-            tx,
-        )
-        .unwrap();
+        let orch =
+            Orchestrator::new("agent-webauthn-test".into(), dir.clone(), &config, tx).unwrap();
 
         let ceremony_req = WebAuthnCeremonyRequest {
             ceremony_id: "ceremony-999".into(),
@@ -539,7 +546,9 @@ mod tests {
         let frame = TunnelServerFrame {
             frame_id: "server-frame-999".into(),
             timestamp_unix_ms: 1234567,
-            payload: Some(tunnel::tunnel_server_frame::Payload::WebauthnRequest(ceremony_req)),
+            payload: Some(tunnel::tunnel_server_frame::Payload::WebauthnRequest(
+                ceremony_req,
+            )),
         };
 
         orch.handle_frame(frame).await;
@@ -552,7 +561,8 @@ mod tests {
                 assert_eq!(resp.ceremony_id, "ceremony-999");
                 assert!(resp.success);
                 assert!(!resp.credential_json.is_empty());
-                let parsed: serde_json::Value = serde_json::from_str(&resp.credential_json).unwrap();
+                let parsed: serde_json::Value =
+                    serde_json::from_str(&resp.credential_json).unwrap();
                 assert_eq!(parsed["id"], "ceremony-999");
                 assert_eq!(parsed["type"], "public-key");
             }

@@ -80,3 +80,60 @@ pub struct LaborMetric {
     pub calibration_rating: Option<u8>,
     pub timestamp: DateTime<Utc>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgentSessionInfo {
+    /// Immutable type-prefixed identifier: agt_<ulid>
+    pub id: String,
+    /// Human-readable agent display name
+    pub name: String,
+    /// Functional persona/role
+    pub role: String,
+    /// Detailed description of agent purpose
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Allocated X11 cloud display slot (:1, :2, ...)
+    #[serde(alias = "display_slot")]
+    pub display_number: u16,
+    /// noVNC / websockify port: 6079 + N
+    pub vnc_port: u16,
+    /// Raw RFB port: 5900 + N
+    #[serde(default)]
+    pub rfb_port: u16,
+    /// Chrome DevTools Protocol port: 9222 + N
+    #[serde(default)]
+    pub cdp_port: u16,
+    /// Remote host IP or hostname
+    #[serde(default = "default_vm_host")]
+    pub vm_host: String,
+    /// Runtime state: "idle", "running", "paused", "error"
+    #[serde(default = "default_status")]
+    pub status: String,
+    /// Optional team grouping ID
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_id: Option<String>,
+    /// ISO-8601 creation timestamp
+    #[serde(default = "default_created_at")]
+    pub created_at: String,
+    /// Optional last update timestamp
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    /// Optional system prompt / directives
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
+    /// Absolute or relative workspace directory path
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_dir: Option<String>,
+}
+
+fn default_vm_host() -> String {
+    "44.242.94.86".to_string()
+}
+
+fn default_status() -> String {
+    "idle".to_string()
+}
+
+fn default_created_at() -> String {
+    Utc::now().to_rfc3339()
+}

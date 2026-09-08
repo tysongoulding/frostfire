@@ -1,7 +1,7 @@
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tracing::{debug, info};
 
@@ -103,7 +103,11 @@ impl CredentialPersistence {
                 if !data.is_empty() {
                     let mut h = Sha256::new();
                     h.update(&data);
-                    let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().to_string();
+                    let rel = path
+                        .strip_prefix(root)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .to_string();
                     acc.push((rel, format!("{:x}", h.finalize())));
                 }
             } else if path.is_dir() {
@@ -238,7 +242,8 @@ mod tests {
 
     #[test]
     fn test_credential_backup_and_restore_lifecycle() {
-        let base_tmp = std::env::temp_dir().join(format!("frostfire-cred-test-{}", uuid::Uuid::new_v4()));
+        let base_tmp =
+            std::env::temp_dir().join(format!("frostfire-cred-test-{}", uuid::Uuid::new_v4()));
         let home = base_tmp.join("home");
         let mirror = base_tmp.join("mirror");
         let new_home = base_tmp.join("new_home");
@@ -262,13 +267,20 @@ mod tests {
         let sig_file = mirror.join(".ssh.sig");
 
         // 1. Backup
-        let changed = persistence.backup_one(&ssh_dir, &mirror_ssh, &sig_file).unwrap();
+        let changed = persistence
+            .backup_one(&ssh_dir, &mirror_ssh, &sig_file)
+            .unwrap();
         assert!(changed);
         assert!(mirror_ssh.join("id_rsa").exists());
-        assert!(!mirror_ssh.join("Cache").exists(), "Cache dir should have been pruned");
+        assert!(
+            !mirror_ssh.join("Cache").exists(),
+            "Cache dir should have been pruned"
+        );
 
         // Second backup without modification should report unchanged (false)
-        let changed2 = persistence.backup_one(&ssh_dir, &mirror_ssh, &sig_file).unwrap();
+        let changed2 = persistence
+            .backup_one(&ssh_dir, &mirror_ssh, &sig_file)
+            .unwrap();
         assert!(!changed2);
 
         // 2. Restore to clean target

@@ -16,6 +16,7 @@ pub struct AppPaths {
     pub extensions_dir: PathBuf,
     pub blackboard_dir: PathBuf,
     pub custom_prompts_dir: PathBuf,
+    pub agents_dir: PathBuf,
 }
 
 impl AppPaths {
@@ -31,6 +32,7 @@ impl AppPaths {
             let extensions_dir = home.join(".frostfireOS").join("extensions");
             let blackboard_dir = app_data_dir.join("blackboard");
             let custom_prompts_dir = app_data_dir.join("custom_prompts");
+            let agents_dir = app_data_dir.join("agents");
 
             Ok(Self {
                 app_install_dir,
@@ -38,6 +40,7 @@ impl AppPaths {
                 extensions_dir,
                 blackboard_dir,
                 custom_prompts_dir,
+                agents_dir,
             })
         }
 
@@ -45,10 +48,14 @@ impl AppPaths {
         {
             let home = dirs::home_dir().ok_or(PathError::NoHomeDir)?;
             let app_install_dir = PathBuf::from("/Applications/frostfireOS.app");
-            let app_data_dir = home.join("Library").join("Application Support").join("frostfireOS");
+            let app_data_dir = home
+                .join("Library")
+                .join("Application Support")
+                .join("frostfireOS");
             let extensions_dir = home.join(".frostfireOS").join("extensions");
             let blackboard_dir = app_data_dir.join("blackboard");
             let custom_prompts_dir = app_data_dir.join("custom_prompts");
+            let agents_dir = app_data_dir.join("agents");
 
             Ok(Self {
                 app_install_dir,
@@ -56,6 +63,7 @@ impl AppPaths {
                 extensions_dir,
                 blackboard_dir,
                 custom_prompts_dir,
+                agents_dir,
             })
         }
 
@@ -72,6 +80,7 @@ impl AppPaths {
             let extensions_dir = home.join(".frostfireOS").join("extensions");
             let blackboard_dir = app_data_dir.join("blackboard");
             let custom_prompts_dir = app_data_dir.join("custom_prompts");
+            let agents_dir = app_data_dir.join("agents");
 
             Ok(Self {
                 app_install_dir,
@@ -79,6 +88,7 @@ impl AppPaths {
                 extensions_dir,
                 blackboard_dir,
                 custom_prompts_dir,
+                agents_dir,
             })
         }
 
@@ -93,6 +103,7 @@ impl AppPaths {
             let extensions_dir = app_data_dir.join("extensions");
             let blackboard_dir = app_data_dir.join("blackboard");
             let custom_prompts_dir = app_data_dir.join("custom_prompts");
+            let agents_dir = app_data_dir.join("agents");
 
             Ok(Self {
                 app_install_dir,
@@ -100,6 +111,7 @@ impl AppPaths {
                 extensions_dir,
                 blackboard_dir,
                 custom_prompts_dir,
+                agents_dir,
             })
         }
     }
@@ -109,6 +121,7 @@ impl AppPaths {
         std::fs::create_dir_all(&self.extensions_dir)?;
         std::fs::create_dir_all(&self.blackboard_dir)?;
         std::fs::create_dir_all(&self.custom_prompts_dir)?;
+        std::fs::create_dir_all(&self.agents_dir)?;
         Ok(())
     }
 }

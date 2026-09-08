@@ -96,7 +96,9 @@ impl WriteAclGuard {
         is_frozen: bool,
     ) -> Result<(), BlackboardError> {
         if is_frozen && !caller.is_system_admin() {
-            return Err(BlackboardError::FrozenNamespace(target_namespace.to_string()));
+            return Err(BlackboardError::FrozenNamespace(
+                target_namespace.to_string(),
+            ));
         }
 
         if caller.namespace != target_namespace && !caller.is_system_admin() {
@@ -595,7 +597,9 @@ fn handle_update_manifest(
     };
 
     manifest.version += 1;
-    manifest.namespaces.insert(target_namespace.to_string(), entry);
+    manifest
+        .namespaces
+        .insert(target_namespace.to_string(), entry);
     let updated_json =
         serde_json::to_string(&manifest).map_err(|e| BlackboardError::IoError(e.to_string()))?;
     let updated_at_str = Utc::now().to_rfc3339();
@@ -703,6 +707,11 @@ impl BlackboardStore {
         self.signal_sender.subscribe()
     }
 
+    /// Returns a broadcast receiver for all published artifact signals.
+    pub fn subscribe_signals(&self) -> broadcast::Receiver<BlackboardSignal> {
+        self.subscribe()
+    }
+
     pub fn disk_path(&self) -> Option<&PathBuf> {
         self.disk_path.as_ref()
     }
@@ -731,11 +740,13 @@ impl BlackboardStore {
                 resp: resp_tx,
             })
             .await
-            .map_err(|_| BlackboardError::DatabaseError("Write actor channel closed".to_string()))?;
+            .map_err(|_| {
+                BlackboardError::DatabaseError("Write actor channel closed".to_string())
+            })?;
 
-        resp_rx
-            .await
-            .map_err(|_| BlackboardError::DatabaseError("Write actor dropped response".to_string()))?
+        resp_rx.await.map_err(|_| {
+            BlackboardError::DatabaseError("Write actor dropped response".to_string())
+        })?
     }
 
     /// Update or insert a namespace entry into the Data Plane manifest under Zero-Trust ACLs.
@@ -756,11 +767,13 @@ impl BlackboardStore {
                 resp: resp_tx,
             })
             .await
-            .map_err(|_| BlackboardError::DatabaseError("Write actor channel closed".to_string()))?;
+            .map_err(|_| {
+                BlackboardError::DatabaseError("Write actor channel closed".to_string())
+            })?;
 
-        resp_rx
-            .await
-            .map_err(|_| BlackboardError::DatabaseError("Write actor dropped response".to_string()))?
+        resp_rx.await.map_err(|_| {
+            BlackboardError::DatabaseError("Write actor dropped response".to_string())
+        })?
     }
 
     /// Freeze a namespace when an execution phase completes (making it immutable).
@@ -779,11 +792,16 @@ impl BlackboardStore {
         }
     }
 
-    pub async fn get_manifest(&self, board_id: &str) -> Result<BlackboardManifest, BlackboardError> {
+    pub async fn get_manifest(
+        &self,
+        board_id: &str,
+    ) -> Result<BlackboardManifest, BlackboardError> {
         let json_opt: Option<String> = {
             let conn = self.reader_conn.lock().unwrap();
-            let mut stmt = conn.prepare("SELECT manifest_json FROM manifests WHERE board_id = ?1")?;
-            stmt.query_row(params![board_id], |row| row.get(0)).optional()?
+            let mut stmt =
+                conn.prepare("SELECT manifest_json FROM manifests WHERE board_id = ?1")?;
+            stmt.query_row(params![board_id], |row| row.get(0))
+                .optional()?
         };
 
         match json_opt {
@@ -794,7 +812,10 @@ impl BlackboardStore {
         }
     }
 
-    pub async fn get_presentation_markdown(&self, board_id: &str) -> Result<String, BlackboardError> {
+    pub async fn get_presentation_markdown(
+        &self,
+        board_id: &str,
+    ) -> Result<String, BlackboardError> {
         let manifest = self.get_manifest(board_id).await?;
         Ok(manifest.compile_presentation_markdown())
     }
@@ -1008,8 +1029,17 @@ impl BlackboardStore {
         };
 
         let mut list = Vec::new();
-        for (uri, author_id, title, content_opt, mime_type, version, hash, is_blob, created_at_str) in
-            items
+        for (
+            uri,
+            author_id,
+            title,
+            content_opt,
+            mime_type,
+            version,
+            hash,
+            is_blob,
+            created_at_str,
+        ) in items
         {
             let created_at = DateTime::parse_from_rfc3339(&created_at_str)
                 .map(|dt| dt.with_timezone(&Utc))
@@ -1017,7 +1047,9 @@ impl BlackboardStore {
             let content = if is_blob == 1 {
                 if let Some(ref bdir) = self.blobs_dir {
                     let blob_path = bdir.join(format!("{}.bin", hash));
-                    tokio::fs::read_to_string(blob_path).await.unwrap_or_default()
+                    tokio::fs::read_to_string(blob_path)
+                        .await
+                        .unwrap_or_default()
                 } else {
                     let map = self.in_memory_blobs.read().unwrap();
                     map.get(&hash).cloned().unwrap_or_default()

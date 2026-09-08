@@ -9,32 +9,12 @@ export interface PlanStep {
   status: "pending" | "in_progress" | "completed";
 }
 
-const SAMPLE_PLAN_STEPS: PlanStep[] = [
-  {
-    id: "step-1",
-    title: "Scaffold Desktop UI Framework",
-    description: "Initialize Tauri 2.0 workspace and React 19 component architecture.",
-    files: ["lota/package.json", "lota/src-tauri/Cargo.toml"],
-    status: "completed",
-  },
-  {
-    id: "step-2",
-    title: "Implement Streaming Hook Pipeline",
-    description: "Connect Rig agent token streams with requestAnimationFrame batching.",
-    files: ["lota/src/hooks/useRhoEngine.ts", "lota/src/hooks/useStreamingFeed.ts"],
-    status: "completed",
-  },
-  {
-    id: "step-3",
-    title: "Rig Extractor & Multi-Persona Support",
-    description: "Expose Rig persona profiles, dynamic toolboxes, and model selectors.",
-    files: ["lota/src/components/agent/AgentInspector.tsx"],
-    status: "in_progress",
-  },
-];
+export interface StructuredPlanViewProps {
+  initialSteps?: PlanStep[];
+}
 
-export function StructuredPlanView() {
-  const [steps, setSteps] = useState<PlanStep[]>(SAMPLE_PLAN_STEPS);
+export function StructuredPlanView({ initialSteps = [] }: StructuredPlanViewProps = {}) {
+  const [steps, setSteps] = useState<PlanStep[]>(initialSteps);
 
   const toggleStep = (id: string) => {
     setSteps((prev) =>
@@ -50,7 +30,7 @@ export function StructuredPlanView() {
   };
 
   const completedCount = steps.filter((s) => s.status === "completed").length;
-  const progressPercent = Math.round((completedCount / steps.length) * 100);
+  const progressPercent = steps.length > 0 ? Math.round((completedCount / steps.length) * 100) : 0;
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4 max-w-4xl mx-auto text-xs text-[#c9d1d9]">
@@ -80,7 +60,12 @@ export function StructuredPlanView() {
         />
       </div>
 
-      <div className="space-y-2.5">
+      {steps.length === 0 ? (
+        <div className="py-12 px-4 border border-dashed border-[#30363d] rounded-xl text-center text-[#8b949e]">
+          No plan steps defined. Run an agent or define execution tasks to populate.
+        </div>
+      ) : (
+        <div className="space-y-2.5">
         {steps.map((step) => {
           const isDone = step.status === "completed";
           return (
@@ -140,6 +125,7 @@ export function StructuredPlanView() {
           );
         })}
       </div>
+      )}
     </div>
   );
 }

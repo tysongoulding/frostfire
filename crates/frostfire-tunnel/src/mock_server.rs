@@ -66,7 +66,9 @@ impl AgentTunnelService for MockTunnelServiceImpl {
 
                 // Auto-acknowledge heartbeat if enabled
                 if auto_ack.load(Ordering::SeqCst) {
-                    if let Some(tunnel_client_frame::Payload::Heartbeat(ref hb)) = client_frame.payload {
+                    if let Some(tunnel_client_frame::Payload::Heartbeat(ref hb)) =
+                        client_frame.payload
+                    {
                         if !hb.is_ack {
                             let ack_frame = TunnelServerFrame {
                                 frame_id: uuid::Uuid::new_v4().to_string(),
@@ -84,7 +86,9 @@ impl AgentTunnelService for MockTunnelServiceImpl {
                 }
 
                 // Auto-handle UserPrompt in mock mode
-                if let Some(tunnel_client_frame::Payload::UserPrompt(ref prompt)) = client_frame.payload {
+                if let Some(tunnel_client_frame::Payload::UserPrompt(ref prompt)) =
+                    client_frame.payload
+                {
                     let p_lower = prompt.text.to_lowercase();
                     let prompt_text = prompt.text.clone();
                     let responder = ack_sender.clone();
@@ -98,16 +102,24 @@ impl AgentTunnelService for MockTunnelServiceImpl {
                                 expected_sha256: String::new(),
                                 dry_run: false,
                             };
-                            let _ = responder.send(Ok(TunnelServerFrame {
-                                frame_id: uuid::Uuid::new_v4().to_string(),
-                                timestamp_unix_ms: chrono::Utc::now().timestamp_millis(),
-                                payload: Some(tunnel_server_frame::Payload::ApplyPatch(patch)),
-                            })).await;
+                            let _ = responder
+                                .send(Ok(TunnelServerFrame {
+                                    frame_id: uuid::Uuid::new_v4().to_string(),
+                                    timestamp_unix_ms: chrono::Utc::now().timestamp_millis(),
+                                    payload: Some(tunnel_server_frame::Payload::ApplyPatch(patch)),
+                                }))
+                                .await;
                         } else {
                             #[cfg(windows)]
-                            let (cmd, args) = ("cmd.exe".to_string(), vec!["/c".to_string(), "dir".to_string()]);
+                            let (cmd, args) = (
+                                "cmd.exe".to_string(),
+                                vec!["/c".to_string(), "dir".to_string()],
+                            );
                             #[cfg(not(windows))]
-                            let (cmd, args) = ("sh".to_string(), vec!["-c".to_string(), "ls -la".to_string()]);
+                            let (cmd, args) = (
+                                "sh".to_string(),
+                                vec!["-c".to_string(), "ls -la".to_string()],
+                            );
 
                             let exec = ExecCommand {
                                 command_id: format!("cmd-{}", uuid::Uuid::new_v4()),
@@ -120,24 +132,33 @@ impl AgentTunnelService for MockTunnelServiceImpl {
                                 pty_rows: 24,
                                 pty_cols: 80,
                             };
-                            let _ = responder.send(Ok(TunnelServerFrame {
-                                frame_id: uuid::Uuid::new_v4().to_string(),
-                                timestamp_unix_ms: chrono::Utc::now().timestamp_millis(),
-                                payload: Some(tunnel_server_frame::Payload::ExecCommand(exec)),
-                            })).await;
+                            let _ = responder
+                                .send(Ok(TunnelServerFrame {
+                                    frame_id: uuid::Uuid::new_v4().to_string(),
+                                    timestamp_unix_ms: chrono::Utc::now().timestamp_millis(),
+                                    payload: Some(tunnel_server_frame::Payload::ExecCommand(exec)),
+                                }))
+                                .await;
                         }
 
                         let agent_msg = AgentMessage {
                             turn_id: format!("turn-{}", uuid::Uuid::new_v4()),
-                            content: format!("Frostfire Mock Gateway: Swarm executed turn for prompt: '{}'", prompt_text),
+                            content: format!(
+                                "Frostfire Mock Gateway: Swarm executed turn for prompt: '{}'",
+                                prompt_text
+                            ),
                             tool_calls: vec!["exec_command".into()],
                             is_final: true,
                         };
-                        let _ = responder.send(Ok(TunnelServerFrame {
-                            frame_id: uuid::Uuid::new_v4().to_string(),
-                            timestamp_unix_ms: chrono::Utc::now().timestamp_millis(),
-                            payload: Some(tunnel_server_frame::Payload::AgentMessage(agent_msg)),
-                        })).await;
+                        let _ = responder
+                            .send(Ok(TunnelServerFrame {
+                                frame_id: uuid::Uuid::new_v4().to_string(),
+                                timestamp_unix_ms: chrono::Utc::now().timestamp_millis(),
+                                payload: Some(tunnel_server_frame::Payload::AgentMessage(
+                                    agent_msg,
+                                )),
+                            }))
+                            .await;
                     });
                 }
 

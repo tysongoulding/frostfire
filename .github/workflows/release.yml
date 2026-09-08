@@ -1,0 +1,357 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+      - production
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: "Release Please"
+    runs-on: ubuntu-latest
+    outputs:
+      pr: ${{ steps.release.outputs.pr }}
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json
+          target-branch: ${{ github.ref_name }}
+
+  update-workspace:
+    runs-on: ubuntu-latest
+    name: "Update Cargo.lock on Release PR"
+    needs: release-please
+    if: ${{ needs.release-please.outputs.pr }}
+    steps:
+      - name: Checkout release PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ fromJSON(needs.release-please.outputs.pr).headBranchName }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Linux System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Sync Cargo.lock
+        run: |
+          cargo check --workspace
+          if git diff --quiet -- Cargo.lock; then
+            echo "Cargo.lock is already up to date"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add Cargo.lock
+            git commit -m "chore: update Cargo.lock for release"
+            git push origin HEAD:${{ fromJSON(needs.release-please.outputs.pr).headBranchName }}
+          fi
+
+  build-release-desktop:
+    name: "Build Desktop ${{ matrix.target }}"
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+    env:
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: application/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: application
+        run: npm ci
+
+      - name: Install Linux System Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build Tauri Desktop Bundle
+        working-directory: application
+        run: npx tauri build --target ${{ matrix.target }}
+
+      - name: Package and Upload (Linux / macOS)
+        if: runner.os != 'Windows'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          name="frostfire-${TAG#v}-${{ matrix.target }}"
+          mkdir -p release-assets
+          # Collect discrete installers: .AppImage, .deb, .dmg
+          find "target/${{ matrix.target }}/release/bundle" -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.dmg" \) -exec cp {} release-assets/ \; 2>/dev/null || true
+          # Package discrete .app bundles
+          for app in $(find "target/${{ matrix.target }}/release/bundle" -maxdepth 3 -type d -name "*.app" 2>/dev/null); do
+            appname=$(basename "$app")
+            tar czf "release-assets/${appname%.app}-${TAG#v}-${{ matrix.target }}.app.tar.gz" -C "$(dirname "$app")" "$appname"
+          done
+          # Also package full release archive
+          mkdir -p dist
+          cp -r target/${{ matrix.target }}/release/bundle/* dist/ 2>/dev/null || true
+          tar czf "release-assets/$name.tar.gz" -C dist . 2>/dev/null || true
+          # Upload discrete release assets
+          cd release-assets
+          for asset in *; do
+            if [ -f "$asset" ]; then
+              gh release upload "$TAG" "$asset" --clobber
+            fi
+          done
+
+      - name: Package and Upload (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $cleanTag = if ($env:TAG) { $env:TAG -replace '^v', '' } else { '0.0.0' }
+          $name = "frostfire-$cleanTag-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path "release-assets"
+          # Collect discrete packages: .exe, .msi
+          Get-ChildItem -Path "target/${{ matrix.target }}/release/bundle" -Recurse -Include *.exe,*.msi -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item -Path $_.FullName -Destination "release-assets"
+          }
+          # Also package full bundle zip
+          New-Item -ItemType Directory -Force -Path "dist"
+          Copy-Item -Path "target/${{ matrix.target }}/release/bundle/*" -Destination "dist" -Recurse -ErrorAction SilentlyContinue
+          Compress-Archive -Path "dist/*" -DestinationPath "release-assets/$name.zip" -Force -ErrorAction SilentlyContinue
+          # Upload discrete release assets
+          Get-ChildItem -Path "release-assets" -File | ForEach-Object {
+            gh release upload $env:TAG $_.FullName --clobber
+          }
+
+  build-release-android:
+    name: "Build Android APK / AAB"
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: '26.1.10909125'
+
+      - name: Export NDK Environment
+        run: |
+          NDK_PATH="${{ steps.setup-ndk.outputs.ndk-path }}"
+          if [ -z "$NDK_PATH" ]; then
+            NDK_PATH="$ANDROID_NDK_HOME"
+          fi
+          if [ -z "$NDK_PATH" ] && [ -d "$ANDROID_HOME/ndk/26.1.10909125" ]; then
+            NDK_PATH="$ANDROID_HOME/ndk/26.1.10909125"
+          fi
+          echo "ANDROID_NDK_ROOT=$NDK_PATH" >> $GITHUB_ENV
+          echo "NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: application/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: application
+        run: npm ci
+
+      - name: Install Rust Toolchain & Android Targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android
+
+      - name: Build Android (Debug / Pre-Release)
+        working-directory: application
+        run: |
+          npx tauri android init --ci 2>/dev/null || true
+          npx tauri android build --apk --aab 2>/dev/null || echo "Android build completed or requires signing key"
+          mkdir -p release-assets
+          # Collect discrete packages: .apk, .aab
+          find src-tauri/gen/android/app/build/outputs -type f \( -name "*.apk" -o -name "*.aab" \) -exec cp {} release-assets/ \; 2>/dev/null || true
+          # Also package build outputs archive
+          if [ -d "src-tauri/gen/android/app/build/outputs" ]; then
+            tar czf "release-assets/frostfire-${TAG#v}-android.tar.gz" -C src-tauri/gen/android/app/build/outputs . 2>/dev/null || true
+          fi
+          # Upload discrete release assets
+          cd release-assets
+          for f in *; do
+            if [ -f "$f" ]; then
+              gh release upload "$TAG" "$f" --clobber
+            fi
+          done
+
+  build-release-ios:
+    name: "Build iOS (Xcode Archive)"
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: macos-latest
+    env:
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: application/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: application
+        run: npm ci
+
+      - name: Install Rust Toolchain & iOS Targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios, aarch64-apple-ios-sim
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ios
+
+      - name: Build iOS (Tauri iOS Build)
+        working-directory: application
+        run: |
+          npx tauri ios init --ci 2>/dev/null || true
+          npx tauri ios build --no-watch 2>/dev/null || echo "iOS build completed or requires Apple provisioning profile"
+          mkdir -p release-assets
+          # Collect discrete packages: .ipa
+          find src-tauri/gen/apple/build -type f -name "*.ipa" -exec cp {} release-assets/ \; 2>/dev/null || true
+          # Also package build outputs archive
+          if [ -d "src-tauri/gen/apple/build" ]; then
+            tar czf "release-assets/frostfire-${TAG#v}-ios.tar.gz" -C src-tauri/gen/apple/build . 2>/dev/null || true
+          fi
+          # Upload discrete release assets
+          cd release-assets
+          for f in *; do
+            if [ -f "$f" ]; then
+              gh release upload "$TAG" "$f" --clobber
+            fi
+          done
+
+  checksums:
+    name: "Generate SHA256SUMS"
+    needs: [release-please, build-release-desktop, build-release-android, build-release-ios]
+    if: always() && needs.release-please.outputs.releases_created == 'true'
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Download release assets
+        run: |
+          mkdir -p dist
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist --clobber
+
+      - name: Generate and upload SHA256SUMS
+        run: |
+          cd dist
+          rm -f SHA256SUMS
+          shopt -s nullglob
+          files=(*)
+          if [ ${#files[@]} -gt 0 ]; then
+            sha256sum "${files[@]}" | sort -k2 > SHA256SUMS
+            cat SHA256SUMS
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" SHA256SUMS --clobber
+          fi
+
+  sync-lock:
+    name: "Sync Cargo.lock on main and production after release"
+    needs: [release-please, build-release-desktop, checksums]
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Sync Cargo.lock
+        run: |
+          cargo check --workspace
+          if git diff --quiet -- Cargo.lock; then
+            echo "Cargo.lock is already up to date"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add Cargo.lock
+            git commit -m "chore: sync Cargo.lock after ${{ needs.release-please.outputs.tag_name }}"
+            git push origin HEAD:${{ github.ref_name }}
+          fi

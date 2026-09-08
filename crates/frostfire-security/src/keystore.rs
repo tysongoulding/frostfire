@@ -1,9 +1,9 @@
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -61,8 +61,9 @@ pub trait KeyStore: Send + Sync {
     fn get_str(&self, key: &str) -> Result<Option<String>, KeyStoreError> {
         match self.get(key)? {
             Some(bytes) => {
-                let s = String::from_utf8(bytes)
-                    .map_err(|e| KeyStoreError::DecryptionFailed(format!("Invalid UTF-8 sequence: {e}")))?;
+                let s = String::from_utf8(bytes).map_err(|e| {
+                    KeyStoreError::DecryptionFailed(format!("Invalid UTF-8 sequence: {e}"))
+                })?;
                 Ok(Some(s))
             }
             None => Ok(None),
@@ -90,23 +91,35 @@ impl InMemoryKeyStore {
 
 impl KeyStore for InMemoryKeyStore {
     fn set(&self, key: &str, secret: &[u8]) -> Result<(), KeyStoreError> {
-        let mut map = self.entries.write().map_err(|_| KeyStoreError::LockError("Failed to acquire write lock".into()))?;
+        let mut map = self
+            .entries
+            .write()
+            .map_err(|_| KeyStoreError::LockError("Failed to acquire write lock".into()))?;
         map.insert(key.to_string(), secret.to_vec());
         Ok(())
     }
 
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>, KeyStoreError> {
-        let map = self.entries.read().map_err(|_| KeyStoreError::LockError("Failed to acquire read lock".into()))?;
+        let map = self
+            .entries
+            .read()
+            .map_err(|_| KeyStoreError::LockError("Failed to acquire read lock".into()))?;
         Ok(map.get(key).cloned())
     }
 
     fn delete(&self, key: &str) -> Result<bool, KeyStoreError> {
-        let mut map = self.entries.write().map_err(|_| KeyStoreError::LockError("Failed to acquire write lock".into()))?;
+        let mut map = self
+            .entries
+            .write()
+            .map_err(|_| KeyStoreError::LockError("Failed to acquire write lock".into()))?;
         Ok(map.remove(key).is_some())
     }
 
     fn list(&self) -> Result<Vec<String>, KeyStoreError> {
-        let map = self.entries.read().map_err(|_| KeyStoreError::LockError("Failed to acquire read lock".into()))?;
+        let map = self
+            .entries
+            .read()
+            .map_err(|_| KeyStoreError::LockError("Failed to acquire read lock".into()))?;
         let mut keys: Vec<String> = map.keys().cloned().collect();
         keys.sort();
         Ok(keys)
@@ -129,7 +142,10 @@ pub struct EncryptedFileKeyStore {
 
 impl EncryptedFileKeyStore {
     /// Open or create an encrypted keystore at the given path using a 32-byte master key.
-    pub fn open_or_create(path: impl AsRef<Path>, master_key: [u8; 32]) -> Result<Self, KeyStoreError> {
+    pub fn open_or_create(
+        path: impl AsRef<Path>,
+        master_key: [u8; 32],
+    ) -> Result<Self, KeyStoreError> {
         let path = path.as_ref().to_path_buf();
         let entries = if path.exists() {
             Self::read_and_decrypt(&path, &master_key)?
@@ -164,7 +180,10 @@ impl EncryptedFileKeyStore {
     }
 
     fn persist(&self) -> Result<(), KeyStoreError> {
-        let map = self.entries.read().map_err(|_| KeyStoreError::LockError("Failed to acquire read lock".into()))?;
+        let map = self
+            .entries
+            .read()
+            .map_err(|_| KeyStoreError::LockError("Failed to acquire read lock".into()))?;
         let plaintext = serde_json::to_vec(&*map)?;
         let encrypted_payload = Self::encrypt_payload(&plaintext, &self.master_key);
 
@@ -176,7 +195,10 @@ impl EncryptedFileKeyStore {
 
         let temp_path = self.path.with_file_name(format!(
             "{}.tmp.{}",
-            self.path.file_name().and_then(|n| n.to_str()).unwrap_or("keystore"),
+            self.path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("keystore"),
             uuid::Uuid::new_v4()
         ));
         {
@@ -188,7 +210,10 @@ impl EncryptedFileKeyStore {
         Ok(())
     }
 
-    fn read_and_decrypt(path: &Path, master_key: &[u8; 32]) -> Result<HashMap<String, Vec<u8>>, KeyStoreError> {
+    fn read_and_decrypt(
+        path: &Path,
+        master_key: &[u8; 32],
+    ) -> Result<HashMap<String, Vec<u8>>, KeyStoreError> {
         let mut file = File::open(path)?;
         let mut data = Vec::new();
         file.read_to_end(&mut data)?;
@@ -231,7 +256,9 @@ impl EncryptedFileKeyStore {
     fn decrypt_payload(data: &[u8], master_key: &[u8; 32]) -> Result<Vec<u8>, KeyStoreError> {
         let min_len = FILE_MAGIC.len() + 16 + 16 + 32;
         if data.len() < min_len {
-            return Err(KeyStoreError::CorruptedStore("Payload is smaller than header".into()));
+            return Err(KeyStoreError::CorruptedStore(
+                "Payload is smaller than header".into(),
+            ));
         }
 
         if &data[..FILE_MAGIC.len()] != FILE_MAGIC {
@@ -255,7 +282,9 @@ impl EncryptedFileKeyStore {
 
         let computed_tag = Self::compute_hmac(&mac_key, salt, nonce, ciphertext);
         if computed_tag != expected_tag {
-            return Err(KeyStoreError::DecryptionFailed("Authentication tag mismatch or corrupted file".into()));
+            return Err(KeyStoreError::DecryptionFailed(
+                "Authentication tag mismatch or corrupted file".into(),
+            ));
         }
 
         let mut enc_hasher = Sha256::new();
@@ -307,20 +336,29 @@ impl EncryptedFileKeyStore {
 impl KeyStore for EncryptedFileKeyStore {
     fn set(&self, key: &str, secret: &[u8]) -> Result<(), KeyStoreError> {
         {
-            let mut map = self.entries.write().map_err(|_| KeyStoreError::LockError("Failed to acquire write lock".into()))?;
+            let mut map = self
+                .entries
+                .write()
+                .map_err(|_| KeyStoreError::LockError("Failed to acquire write lock".into()))?;
             map.insert(key.to_string(), secret.to_vec());
         }
         self.persist()
     }
 
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>, KeyStoreError> {
-        let map = self.entries.read().map_err(|_| KeyStoreError::LockError("Failed to acquire read lock".into()))?;
+        let map = self
+            .entries
+            .read()
+            .map_err(|_| KeyStoreError::LockError("Failed to acquire read lock".into()))?;
         Ok(map.get(key).cloned())
     }
 
     fn delete(&self, key: &str) -> Result<bool, KeyStoreError> {
         let removed = {
-            let mut map = self.entries.write().map_err(|_| KeyStoreError::LockError("Failed to acquire write lock".into()))?;
+            let mut map = self
+                .entries
+                .write()
+                .map_err(|_| KeyStoreError::LockError("Failed to acquire write lock".into()))?;
             map.remove(key).is_some()
         };
         if removed {
@@ -330,7 +368,10 @@ impl KeyStore for EncryptedFileKeyStore {
     }
 
     fn list(&self) -> Result<Vec<String>, KeyStoreError> {
-        let map = self.entries.read().map_err(|_| KeyStoreError::LockError("Failed to acquire read lock".into()))?;
+        let map = self
+            .entries
+            .read()
+            .map_err(|_| KeyStoreError::LockError("Failed to acquire read lock".into()))?;
         let mut keys: Vec<String> = map.keys().cloned().collect();
         keys.sort();
         Ok(keys)
@@ -343,9 +384,9 @@ impl KeyStore for EncryptedFileKeyStore {
 
 #[cfg(target_os = "windows")]
 pub mod dpapi {
-    use std::ptr;
-    use std::os::raw::c_void;
     use super::KeyStoreError;
+    use std::os::raw::c_void;
+    use std::ptr;
 
     #[repr(C)]
     struct DataBlob {
@@ -417,12 +458,13 @@ pub mod dpapi {
 
         if res == 0 {
             let err = unsafe { GetLastError() };
-            return Err(KeyStoreError::PlatformError(format!("CryptProtectData failed with error code: {err}")));
+            return Err(KeyStoreError::PlatformError(format!(
+                "CryptProtectData failed with error code: {err}"
+            )));
         }
 
-        let slice = unsafe {
-            std::slice::from_raw_parts(out_blob.pb_data, out_blob.cb_data as usize)
-        };
+        let slice =
+            unsafe { std::slice::from_raw_parts(out_blob.pb_data, out_blob.cb_data as usize) };
         let result = slice.to_vec();
         unsafe { LocalFree(out_blob.pb_data as *mut c_void) };
         Ok(result)
@@ -461,12 +503,13 @@ pub mod dpapi {
 
         if res == 0 {
             let err = unsafe { GetLastError() };
-            return Err(KeyStoreError::PlatformError(format!("CryptUnprotectData failed with error code: {err}")));
+            return Err(KeyStoreError::PlatformError(format!(
+                "CryptUnprotectData failed with error code: {err}"
+            )));
         }
 
-        let slice = unsafe {
-            std::slice::from_raw_parts(out_blob.pb_data, out_blob.cb_data as usize)
-        };
+        let slice =
+            unsafe { std::slice::from_raw_parts(out_blob.pb_data, out_blob.cb_data as usize) };
         let result = slice.to_vec();
         unsafe { LocalFree(out_blob.pb_data as *mut c_void) };
         Ok(result)
@@ -484,7 +527,12 @@ pub struct DpapiKeyStore {
 impl DpapiKeyStore {
     pub fn default_path() -> Result<PathBuf, KeyStoreError> {
         let base = directories_next::ProjectDirs::from("com", "frostfire", "frostfire")
-            .ok_or_else(|| KeyStoreError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "Could not determine project directories")))?;
+            .ok_or_else(|| {
+                KeyStoreError::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Could not determine project directories",
+                ))
+            })?;
         Ok(base.data_local_dir().join("keystore.dpapi"))
     }
 
@@ -519,7 +567,10 @@ impl DpapiKeyStore {
     }
 
     fn persist(&self) -> Result<(), KeyStoreError> {
-        let map = self.entries.read().map_err(|_| KeyStoreError::LockError("Failed to acquire read lock".into()))?;
+        let map = self
+            .entries
+            .read()
+            .map_err(|_| KeyStoreError::LockError("Failed to acquire read lock".into()))?;
         let serialized = serde_json::to_vec(&*map)?;
 
         if let Some(parent) = self.path.parent() {
@@ -544,14 +595,20 @@ impl KeyStore for DpapiKeyStore {
     fn set(&self, key: &str, secret: &[u8]) -> Result<(), KeyStoreError> {
         let protected = dpapi::protect(secret, None)?;
         {
-            let mut map = self.entries.write().map_err(|_| KeyStoreError::LockError("Failed to acquire write lock".into()))?;
+            let mut map = self
+                .entries
+                .write()
+                .map_err(|_| KeyStoreError::LockError("Failed to acquire write lock".into()))?;
             map.insert(key.to_string(), protected);
         }
         self.persist()
     }
 
     fn get(&self, key: &str) -> Result<Option<Vec<u8>>, KeyStoreError> {
-        let map = self.entries.read().map_err(|_| KeyStoreError::LockError("Failed to acquire read lock".into()))?;
+        let map = self
+            .entries
+            .read()
+            .map_err(|_| KeyStoreError::LockError("Failed to acquire read lock".into()))?;
         match map.get(key) {
             Some(protected) => {
                 let decrypted = dpapi::unprotect(protected, None)?;
@@ -563,7 +620,10 @@ impl KeyStore for DpapiKeyStore {
 
     fn delete(&self, key: &str) -> Result<bool, KeyStoreError> {
         let removed = {
-            let mut map = self.entries.write().map_err(|_| KeyStoreError::LockError("Failed to acquire write lock".into()))?;
+            let mut map = self
+                .entries
+                .write()
+                .map_err(|_| KeyStoreError::LockError("Failed to acquire write lock".into()))?;
             map.remove(key).is_some()
         };
         if removed {
@@ -573,7 +633,10 @@ impl KeyStore for DpapiKeyStore {
     }
 
     fn list(&self) -> Result<Vec<String>, KeyStoreError> {
-        let map = self.entries.read().map_err(|_| KeyStoreError::LockError("Failed to acquire read lock".into()))?;
+        let map = self
+            .entries
+            .read()
+            .map_err(|_| KeyStoreError::LockError("Failed to acquire read lock".into()))?;
         let mut keys: Vec<String> = map.keys().cloned().collect();
         keys.sort();
         Ok(keys)
@@ -594,7 +657,10 @@ mod tests {
         assert!(ks.list().unwrap().is_empty());
 
         ks.set_str("github_pat", "ghp_secret123").unwrap();
-        assert_eq!(ks.get_str("github_pat").unwrap(), Some("ghp_secret123".to_string()));
+        assert_eq!(
+            ks.get_str("github_pat").unwrap(),
+            Some("ghp_secret123".to_string())
+        );
         assert!(ks.contains("github_pat").unwrap());
 
         let keys = ks.list().unwrap();
@@ -622,9 +688,18 @@ mod tests {
         // Re-open from disk and verify
         {
             let ks = EncryptedFileKeyStore::open_or_create(&file_path, master_key).unwrap();
-            assert_eq!(ks.get_str("aws_secret").unwrap(), Some("AKIAIOSFODNN7EXAMPLE".to_string()));
-            assert_eq!(ks.get("binary_key").unwrap(), Some(vec![0x01, 0x02, 0x03, 0x04]));
-            assert_eq!(ks.list().unwrap(), vec!["aws_secret".to_string(), "binary_key".to_string()]);
+            assert_eq!(
+                ks.get_str("aws_secret").unwrap(),
+                Some("AKIAIOSFODNN7EXAMPLE".to_string())
+            );
+            assert_eq!(
+                ks.get("binary_key").unwrap(),
+                Some(vec![0x01, 0x02, 0x03, 0x04])
+            );
+            assert_eq!(
+                ks.list().unwrap(),
+                vec!["aws_secret".to_string(), "binary_key".to_string()]
+            );
         }
 
         // Cleanup
@@ -633,7 +708,8 @@ mod tests {
 
     #[test]
     fn test_encrypted_file_keystore_tamper_detection() {
-        let temp_dir = std::env::temp_dir().join(format!("syn_test_tamper_{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("syn_test_tamper_{}", uuid::Uuid::new_v4()));
         let file_path = temp_dir.join("creds.enc");
 
         let master_key = [7u8; 32];
@@ -659,12 +735,14 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[test]
     fn test_windows_dpapi_keystore() {
-        let temp_dir = std::env::temp_dir().join(format!("syn_test_dpapi_{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("syn_test_dpapi_{}", uuid::Uuid::new_v4()));
         let file_path = temp_dir.join("creds.dpapi");
 
         {
             let ks = DpapiKeyStore::open_or_create(&file_path).unwrap();
-            ks.set_str("dpapi_token", "secure_windows_token_xyz").unwrap();
+            ks.set_str("dpapi_token", "secure_windows_token_xyz")
+                .unwrap();
         }
 
         // Verify stored file does not contain plain secret
@@ -675,7 +753,10 @@ mod tests {
         // Reopen and retrieve
         {
             let ks = DpapiKeyStore::open_or_create(&file_path).unwrap();
-            assert_eq!(ks.get_str("dpapi_token").unwrap(), Some("secure_windows_token_xyz".to_string()));
+            assert_eq!(
+                ks.get_str("dpapi_token").unwrap(),
+                Some("secure_windows_token_xyz".to_string())
+            );
             assert!(ks.delete("dpapi_token").unwrap());
             assert_eq!(ks.get_str("dpapi_token").unwrap(), None);
         }

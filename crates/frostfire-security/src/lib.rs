@@ -1,15 +1,15 @@
 //! Frostfire Security: Secure credential keystore, inverted token broker, and Merkle audit ledger.
 
-pub mod keystore;
 pub mod broker;
-pub mod ledger;
 pub mod credential_persistence;
+pub mod keystore;
+pub mod ledger;
 
-pub use credential_persistence::{BackupSummary, CredentialPersistence, PersistenceError, RestoreSummary};
-
-pub use keystore::{
-    EncryptedFileKeyStore, InMemoryKeyStore, KeyStore, KeyStoreError,
+pub use credential_persistence::{
+    BackupSummary, CredentialPersistence, PersistenceError, RestoreSummary,
 };
+
+pub use keystore::{EncryptedFileKeyStore, InMemoryKeyStore, KeyStore, KeyStoreError};
 
 #[cfg(target_os = "windows")]
 pub use keystore::{dpapi, DpapiKeyStore};

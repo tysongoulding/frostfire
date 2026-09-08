@@ -34,11 +34,19 @@ impl DaemonService {
             }
         }
 
-        info!("Starting Frostfire Daemon service for workspace: {:?}", self.workspace_root);
-        info!("Connecting outbound tunnel to: {}", self.config.daemon.server_url);
+        info!(
+            "Starting Frostfire Daemon service for workspace: {:?}",
+            self.workspace_root
+        );
+        info!(
+            "Connecting outbound tunnel to: {}",
+            self.config.daemon.server_url
+        );
 
         let tunnel_config = TunnelConfig::new(&self.config.daemon.server_url, &self.agent_id)
-            .with_heartbeat_interval(Some(Duration::from_secs(self.config.daemon.heartbeat_interval_secs)))
+            .with_heartbeat_interval(Some(Duration::from_secs(
+                self.config.daemon.heartbeat_interval_secs,
+            )))
             .with_reconnect_policy(
                 Duration::from_millis(500),
                 Duration::from_secs(self.config.daemon.reconnect_max_backoff_secs),

@@ -279,22 +279,25 @@ impl PtyMultiplexer {
                 cmd.env(k, v);
             }
 
-            let child = pair.slave.spawn_command(cmd).map_err(|e| {
-                PtyError::SpawnFailed {
+            let child = pair
+                .slave
+                .spawn_command(cmd)
+                .map_err(|e| PtyError::SpawnFailed {
                     command: opts.command.clone(),
                     source: std::io::Error::other(e.to_string()),
-                }
-            })?;
+                })?;
 
             drop(pair.slave);
 
-            let writer = pair.master.take_writer().map_err(|e| {
-                PtyError::PtySystem(format!("Failed to take PTY writer: {e}"))
-            })?;
+            let writer = pair
+                .master
+                .take_writer()
+                .map_err(|e| PtyError::PtySystem(format!("Failed to take PTY writer: {e}")))?;
 
-            let reader = pair.master.try_clone_reader().map_err(|e| {
-                PtyError::PtySystem(format!("Failed to clone PTY reader: {e}"))
-            })?;
+            let reader = pair
+                .master
+                .try_clone_reader()
+                .map_err(|e| PtyError::PtySystem(format!("Failed to clone PTY reader: {e}")))?;
 
             let master_arc: Arc<Mutex<Option<Box<dyn MasterPty + Send>>>> =
                 Arc::new(Mutex::new(Some(pair.master)));
@@ -523,8 +526,7 @@ impl PtyMultiplexer {
             std::thread::Builder::new()
                 .name(format!("proc-wait-{}", sid_final))
                 .spawn(move || {
-                    let exit_code = if let Some(mut child) = child_wait_ref.lock().unwrap().take()
-                    {
+                    let exit_code = if let Some(mut child) = child_wait_ref.lock().unwrap().take() {
                         match child.wait() {
                             Ok(s) => s.code().unwrap_or(0),
                             Err(_) => 0,
@@ -649,7 +651,9 @@ impl PtyMultiplexer {
     /// Retrieves screen info for a given `screen_id`.
     pub fn get_screen_info(&self, screen_id: &str) -> Option<ScreenInfo> {
         let screens = self.screens.read().unwrap();
-        screens.get(screen_id).map(|s| s.info.read().unwrap().clone())
+        screens
+            .get(screen_id)
+            .map(|s| s.info.read().unwrap().clone())
     }
 
     /// Checks if a screen exists and is still currently running.
@@ -804,9 +808,7 @@ mod tests {
             .args(["/c", "echo non_pty_output"])
             .pty(false);
         #[cfg(not(windows))]
-        let opts = SpawnOptions::new("echo")
-            .arg("non_pty_output")
-            .pty(false);
+        let opts = SpawnOptions::new("echo").arg("non_pty_output").pty(false);
 
         let mut rx = mux.spawn_screen(&screen_id, opts).unwrap();
 
@@ -857,4 +859,3 @@ mod tests {
         assert!(mux.cleanup_screen(&screen_id).is_ok());
     }
 }
-

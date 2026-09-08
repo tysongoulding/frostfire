@@ -25,13 +25,14 @@ type SettingsTab = 'general' | 'cloud_vm' | 'computer' | 'billing' | 'updates';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const { theme, mode, setTheme, setMode } = useTheme();
-  const { users, activeUserId, updateUserVmConfig } = useUserStore();
+  const { users, activeUserId, updateUserVmConfig, getActiveUser } = useUserStore();
+  const activeUser = getActiveUser();
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [copied, setCopied] = useState(false);
   const [hwAcceleration, setHwAcceleration] = useState(true);
   const [autoReview, setAutoReview] = useState(false);
   const [autoUpdates, setAutoUpdates] = useState(false);
-  const [computerName, setComputerName] = useState('goulding-pc');
+  const [computerName, setComputerName] = useState('frostfire-node');
   const [execPermission, setExecPermission] = useState('Always allow');
 
   const [selectedVmUser, setSelectedVmUser] = useState<string>(activeUserId || 'user1');
@@ -70,9 +71,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   if (!isOpen) return null;
 
   const handleCopyEmail = () => {
-    navigator.clipboard.writeText('tyson.goulding@optconnect.com');
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    if (activeUser?.email) {
+      navigator.clipboard.writeText(activeUser.email);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
   };
 
   return (
@@ -156,10 +159,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                       </div>
                       <div className="min-w-0">
                         <span className="block font-semibold text-sm text-theme-text-primary truncate">
-                          Tyson Goulding
+                          {activeUser?.name || 'Active User'}
                         </span>
                         <div className="flex items-center gap-1.5 text-theme-text-muted">
-                          <span className="truncate">tyson.goulding@optconnect.com</span>
+                          <span className="truncate">{activeUser?.email || 'user@frostfire.local'}</span>
                           <button
                             onClick={handleCopyEmail}
                             className="hover:text-theme-text-primary cursor-pointer"
@@ -297,7 +300,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
                 {/* User selection buttons */}
                 <div className="grid grid-cols-3 gap-2 p-1.5 rounded-xl border border-theme-border bg-theme-bg/50">
-                  {users.slice(0, 3).map((u) => {
+                  {users.map((u) => {
                     const isSel = u.id === selectedVmUser;
                     return (
                       <button

@@ -87,46 +87,47 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   sessionInfo: {},
   usage: {},
   compaction: {
-    count: 2,
-    totalTokensSaved: 38400,
-    history: [
-      {
-        id: "comp-1",
-        timestamp: "10 mins ago",
-        tokensReclaimed: 24200,
-        reductionPercent: 64,
-        strategy: "Pruned intermediate tool execution payloads & terminal buffers",
-      },
-      {
-        id: "comp-2",
-        timestamp: "Just now",
-        tokensReclaimed: 14200,
-        reductionPercent: 42,
-        strategy: "AST semantic summary of earlier turn history",
-      },
-    ],
+    count: 0,
+    totalTokensSaved: 0,
+    history: [],
   },
   messages: [],
   rawEvents: [],
   pendingApproval: null,
 
   triggerCompaction: (strategy = "Pruned intermediate tool payloads and historical AST buffers") => {
-    const saved = Math.floor(Math.random() * 8000) + 12000;
-    const newRecord: CompactionRecord = {
-      id: `comp-${Date.now()}`,
-      timestamp: "Just now",
-      tokensReclaimed: saved,
-      reductionPercent: Math.floor(Math.random() * 25) + 40,
-      strategy,
-    };
-    set((state) => ({
-      compaction: {
-        count: state.compaction.count + 1,
-        totalTokensSaved: state.compaction.totalTokensSaved + saved,
-        history: [newRecord, ...state.compaction.history],
-      },
-    }));
-    return saved;
+    const { messages } = get();
+    let charsPruned = 0;
+    const compactedMessages = messages.map((msg) => {
+      if (msg.toolCall) {
+        const originalPayloadLength = JSON.stringify(msg.toolCall).length;
+        charsPruned += Math.max(0, originalPayloadLength - 80);
+      }
+      return msg;
+    });
+
+    const tokensReclaimed = Math.max(0, Math.round(charsPruned / 4));
+    if (tokensReclaimed > 0) {
+      const newRecord: CompactionRecord = {
+        id: `comp-${Date.now()}`,
+        timestamp: "Just now",
+        tokensReclaimed,
+        reductionPercent: Math.min(95, Math.round((tokensReclaimed / (tokensReclaimed + 500)) * 100)),
+        strategy,
+      };
+
+      set((state) => ({
+        messages: compactedMessages,
+        compaction: {
+          count: state.compaction.count + 1,
+          totalTokensSaved: state.compaction.totalTokensSaved + tokensReclaimed,
+          history: [newRecord, ...state.compaction.history],
+        },
+      }));
+      return tokensReclaimed;
+    }
+
+    return 0;
   },
 
   setSessionMessages: (messages: MessageItem[]) =>

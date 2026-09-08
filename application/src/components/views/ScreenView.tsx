@@ -15,6 +15,10 @@ interface ScreenViewProps {
   agentName: string;
   agentRole?: string;
   agentId?: string;
+  displayNumber?: number;
+  vncPort?: number;
+  vmHost?: string;
+  execPort?: number;
   onSwitchToChat: () => void;
   onSendCommand?: (command: string) => void;
   userId?: string;
@@ -22,44 +26,27 @@ interface ScreenViewProps {
 
 export const ScreenView: React.FC<ScreenViewProps> = ({
   agentName,
-  agentRole,
+  agentRole: _agentRole,
   agentId,
+  displayNumber: propDisplayNumber,
+  vncPort: propVncPort,
+  vmHost: propVmHost,
+  execPort: propExecPort,
   onSwitchToChat,
   onSendCommand,
   userId: propUserId,
 }) => {
   const { activeUserId, getActiveUser } = useUserStore();
   const currentUser = getActiveUser();
-  const currentUserId = propUserId || currentUser.id || activeUserId || 'user1';
+  const currentUserId = propUserId || currentUser?.id || activeUserId || 'default';
   const [quickCmd, setQuickCmd] = useState('');
   const [isTeaching, setIsTeaching] = useState(false);
   const [streamEpoch, setStreamEpoch] = useState(0);
 
-  const userOffset = currentUserId === 'user2' ? 3 : currentUserId === 'user3' ? 6 : 0;
-  const baseDisp = agentId === 'agent2'
-    ? 2
-    : agentId === 'agent3'
-    ? 3
-    : agentId === 'agent1'
-    ? 1
-    : (agentName.includes('2') || agentRole?.includes(':2') || agentRole?.includes(':5') || agentRole?.includes(':8'))
-    ? 2
-    : (agentName.includes('3') || agentRole?.includes(':3') || agentRole?.includes(':6') || agentRole?.includes(':9'))
-    ? 3
-    : 1;
-  const displayNumber = userOffset + baseDisp;
-
-  const agentKey: 'agent1' | 'agent2' | 'agent3' =
-    baseDisp === 2 ? 'agent2' : baseDisp === 3 ? 'agent3' : 'agent1';
-  const vmHost = currentUser.vmHost || DEFAULT_EC2_HOST;
-  const defaultPorts: Record<'agent1' | 'agent2' | 'agent3', number> =
-    currentUserId === 'user2'
-      ? { agent1: 6083, agent2: 6084, agent3: 6085 }
-      : currentUserId === 'user3'
-      ? { agent1: 6086, agent2: 6087, agent3: 6088 }
-      : { agent1: 6080, agent2: 6081, agent3: 6082 };
-  const agentPort = currentUser.agentPorts?.[agentKey] || defaultPorts[agentKey];
-  const execPort = currentUser.execPort || 3000;
+  const displayNumber = propDisplayNumber ?? 1;
+  const vmHost = propVmHost || currentUser?.vmHost || DEFAULT_EC2_HOST;
+  const agentPort = propVncPort ?? (6079 + displayNumber);
+  const execPort = propExecPort ?? (currentUser?.execPort || 3000);
 
   const vncUrl = getVncUrl(displayNumber, {
     host: vmHost,
@@ -91,11 +78,36 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
           : app === 'terminal'
           ? '/usr/local/bin/terminal-launcher &'
           : '/usr/local/bin/files-launcher &';
-      fetch(`http://${vmHost}:${execPort}/exec`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ display: displayNumber, command: cmd, cwd: '/home/ubuntu', background: true }),
-      }).catch(() => {});
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('execute_remote_cloud_command', {
+          command: cmd,
+          displayNumber,
+          vmHost,
+          execPort,
+          token: null,
+        });
+      } catch {
+        fetch(`http://${vmHost}:${execPort}/exec`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ display: displayNumber, command: cmd, cwd: '/home/ubuntu', background: true }),
+        }).catch(() => {});
+      }
+    }
+  };
+
+  const handleToggleTeaching = async () => {
+    const nextTeaching = !isTeaching;
+    setIsTeaching(nextTeaching);
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('trigger_teach_session', {
+        agentId: agentId || `agt_display_${displayNumber}`,
+        taskName: `task_teach_disp_${displayNumber}`,
+      });
+    } catch (e) {
+      console.warn('Failed to invoke trigger_teach_session:', e);
     }
   };
 
@@ -163,7 +175,7 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
             </button>
 
             <button
-              onClick={() => setIsTeaching((prev) => !prev)}
+              onClick={handleToggleTeaching}
               className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
                 isTeaching
                   ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'

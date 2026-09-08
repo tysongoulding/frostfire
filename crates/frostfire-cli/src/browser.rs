@@ -1,7 +1,7 @@
-use std::time::Duration;
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::time::Duration;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::info;
 
@@ -37,7 +37,10 @@ async fn ensure_chrome_running(cdp_port: u16, client: &reqwest::Client) -> bool 
         return false;
     }
 
-    info!("Chrome not detected on port {}, attempting auto-launch...", cdp_port);
+    info!(
+        "Chrome not detected on port {}, attempting auto-launch...",
+        cdp_port
+    );
 
     #[cfg(windows)]
     {
@@ -62,7 +65,15 @@ async fn ensure_chrome_running(cdp_port: u16, client: &reqwest::Client) -> bool 
         }
         if !spawned {
             let _ = std::process::Command::new("cmd")
-                .args(["/c", "start", "chrome", &format!("--remote-debugging-port={}", cdp_port), &format!("--user-data-dir={}", user_data), "--no-first-run", "--no-default-browser-check"])
+                .args([
+                    "/c",
+                    "start",
+                    "chrome",
+                    &format!("--remote-debugging-port={}", cdp_port),
+                    &format!("--user-data-dir={}", user_data),
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                ])
                 .spawn();
         }
     }
@@ -70,7 +81,10 @@ async fn ensure_chrome_running(cdp_port: u16, client: &reqwest::Client) -> bool 
     #[cfg(not(windows))]
     {
         let display = std::env::var("DISPLAY").unwrap_or_else(|_| ":1".to_string());
-        let user_data = format!("{}/.config/google-chrome-cdp", std::env::var("HOME").unwrap_or_else(|_| "/home/tyson".to_string()));
+        let user_data = format!(
+            "{}/.config/google-chrome-cdp",
+            std::env::var("HOME").unwrap_or_else(|_| "/home/tyson".to_string())
+        );
         let binaries = [
             "/usr/local/bin/google-chrome-launcher",
             "/usr/bin/google-chrome-stable",
@@ -97,7 +111,10 @@ async fn ensure_chrome_running(cdp_port: u16, client: &reqwest::Client) -> bool 
     for _ in 0..30 {
         tokio::time::sleep(Duration::from_millis(100)).await;
         if client.get(&version_url).send().await.is_ok() {
-            info!("Chrome auto-launched and CDP is responsive on port {}", cdp_port);
+            info!(
+                "Chrome auto-launched and CDP is responsive on port {}",
+                cdp_port
+            );
             return true;
         }
     }
@@ -116,7 +133,11 @@ async fn capture_page_screenshot(
         "method": "Page.captureScreenshot",
         "params": { "format": "jpeg", "quality": 75 }
     });
-    if ws_stream.send(Message::Text(ss_req.to_string().into())).await.is_err() {
+    if ws_stream
+        .send(Message::Text(ss_req.to_string().into()))
+        .await
+        .is_err()
+    {
         return None;
     }
     let read_timeout = tokio::time::Instant::now() + Duration::from_secs(3);
@@ -147,7 +168,11 @@ async fn get_page_info(
             "expression": "JSON.stringify({ title: document.title, url: window.location.href })"
         }
     });
-    if ws_stream.send(Message::Text(eval_req.to_string().into())).await.is_ok() {
+    if ws_stream
+        .send(Message::Text(eval_req.to_string().into()))
+        .await
+        .is_ok()
+    {
         if let Ok(Some(Ok(Message::Text(txt)))) =
             tokio::time::timeout(Duration::from_secs(2), ws_stream.next()).await
         {
@@ -188,7 +213,9 @@ pub async fn execute_browser_action(
 
     // 1. Verify Chrome DevTools is reachable (or auto-launch)
     let version_url = format!("http://127.0.0.1:{}/json/version", cdp_port);
-    if client.get(&version_url).send().await.is_err() && !ensure_chrome_running(cdp_port, &client).await {
+    if client.get(&version_url).send().await.is_err()
+        && !ensure_chrome_running(cdp_port, &client).await
+    {
         return Ok(BrowserActionResult {
             success: false,
             action: action.action.clone(),
@@ -221,7 +248,10 @@ pub async fn execute_browser_action(
         Some(target) if target.websocket_url.is_some() => target.websocket_url.unwrap(),
         _ => {
             // Open a new tab
-            let new_url = format!("http://127.0.0.1:{}/json/new?https://www.google.com", cdp_port);
+            let new_url = format!(
+                "http://127.0.0.1:{}/json/new?https://www.google.com",
+                cdp_port
+            );
             let created: TargetInfo = client.put(&new_url).send().await?.json().await?;
             created
                 .websocket_url
@@ -239,10 +269,7 @@ pub async fn execute_browser_action(
 
     match action.action.as_str() {
         "navigate" => {
-            let target_url = action
-                .url
-                .as_deref()
-                .unwrap_or("https://www.google.com");
+            let target_url = action.url.as_deref().unwrap_or("https://www.google.com");
             let (_initial_title, initial_url) = get_page_info(&mut ws_stream, 100).await;
             let is_already_on_target = !initial_url.is_empty()
                 && (initial_url == target_url
@@ -256,12 +283,17 @@ pub async fn execute_browser_action(
                     "method": "Page.navigate",
                     "params": { "url": target_url }
                 });
-                ws_stream.send(Message::Text(nav_req.to_string().into())).await?;
+                ws_stream
+                    .send(Message::Text(nav_req.to_string().into()))
+                    .await?;
 
                 // Wait briefly for navigation to process
                 tokio::time::sleep(Duration::from_millis(1500)).await;
             } else {
-                info!("Chrome already on target URL ({}), preserving active conversation", initial_url);
+                info!(
+                    "Chrome already on target URL ({}), preserving active conversation",
+                    initial_url
+                );
             }
 
             screenshot_base64 = capture_page_screenshot(&mut ws_stream, 2).await;
@@ -274,7 +306,9 @@ pub async fn execute_browser_action(
                     "expression": "JSON.stringify({ title: document.title, url: window.location.href, text: document.body ? document.body.innerText.substring(0, 3000) : '' })"
                 }
             });
-            ws_stream.send(Message::Text(eval_req.to_string().into())).await?;
+            ws_stream
+                .send(Message::Text(eval_req.to_string().into()))
+                .await?;
 
             if let Ok(Some(Ok(Message::Text(txt)))) =
                 tokio::time::timeout(Duration::from_secs(2), ws_stream.next()).await
@@ -282,9 +316,12 @@ pub async fn execute_browser_action(
                 if let Ok(parsed) = serde_json::from_str::<Value>(&txt) {
                     if let Some(json_str) = parsed["result"]["result"]["value"].as_str() {
                         if let Ok(page_meta) = serde_json::from_str::<Value>(json_str) {
-                            page_title = page_meta["title"].as_str().unwrap_or_default().to_string();
-                            current_url = page_meta["url"].as_str().unwrap_or(target_url).to_string();
-                            page_content = page_meta["text"].as_str().unwrap_or_default().to_string();
+                            page_title =
+                                page_meta["title"].as_str().unwrap_or_default().to_string();
+                            current_url =
+                                page_meta["url"].as_str().unwrap_or(target_url).to_string();
+                            page_content =
+                                page_meta["text"].as_str().unwrap_or_default().to_string();
                         }
                     }
                 }
@@ -295,8 +332,12 @@ pub async fn execute_browser_action(
             screenshot_base64 = capture_page_screenshot(&mut ws_stream, 10).await;
             page_content = "Screenshot captured successfully.".into();
             let (t, u) = get_page_info(&mut ws_stream, 11).await;
-            if !t.is_empty() { page_title = t; }
-            if !u.is_empty() { current_url = u; }
+            if !t.is_empty() {
+                page_title = t;
+            }
+            if !u.is_empty() {
+                current_url = u;
+            }
         }
 
         "get_content" => {
@@ -307,7 +348,9 @@ pub async fn execute_browser_action(
                     "expression": "document.body ? document.body.innerText.substring(0, 4000) : ''"
                 }
             });
-            ws_stream.send(Message::Text(eval_req.to_string().into())).await?;
+            ws_stream
+                .send(Message::Text(eval_req.to_string().into()))
+                .await?;
 
             if let Ok(Some(Ok(Message::Text(txt)))) =
                 tokio::time::timeout(Duration::from_secs(2), ws_stream.next()).await
@@ -320,8 +363,12 @@ pub async fn execute_browser_action(
                 }
             }
             let (t, u) = get_page_info(&mut ws_stream, 21).await;
-            if !t.is_empty() { page_title = t; }
-            if !u.is_empty() { current_url = u; }
+            if !t.is_empty() {
+                page_title = t;
+            }
+            if !u.is_empty() {
+                current_url = u;
+            }
         }
 
         "click" => {
@@ -352,7 +399,9 @@ pub async fn execute_browser_action(
                 "method": "Runtime.evaluate",
                 "params": { "expression": click_expr }
             });
-            ws_stream.send(Message::Text(eval_req.to_string().into())).await?;
+            ws_stream
+                .send(Message::Text(eval_req.to_string().into()))
+                .await?;
             if let Ok(Some(Ok(Message::Text(txt)))) =
                 tokio::time::timeout(Duration::from_secs(2), ws_stream.next()).await
             {
@@ -366,8 +415,12 @@ pub async fn execute_browser_action(
             tokio::time::sleep(Duration::from_millis(500)).await;
             screenshot_base64 = capture_page_screenshot(&mut ws_stream, 31).await;
             let (t, u) = get_page_info(&mut ws_stream, 32).await;
-            if !t.is_empty() { page_title = t; }
-            if !u.is_empty() { current_url = u; }
+            if !t.is_empty() {
+                page_title = t;
+            }
+            if !u.is_empty() {
+                current_url = u;
+            }
         }
 
         "type" | "fill" | "input" => {
@@ -421,14 +474,20 @@ pub async fn execute_browser_action(
                     return 'Typed: ' + txt;
                 }})()"#,
                 selector.replace('\\', "\\\\").replace('\'', "\\'"),
-                text_to_type.replace('\\', "\\\\").replace('\'', "\\'").replace('\n', "\\n").replace('\r', "")
+                text_to_type
+                    .replace('\\', "\\\\")
+                    .replace('\'', "\\'")
+                    .replace('\n', "\\n")
+                    .replace('\r', "")
             );
             let eval_req = json!({
                 "id": 50,
                 "method": "Runtime.evaluate",
                 "params": { "expression": type_expr }
             });
-            ws_stream.send(Message::Text(eval_req.to_string().into())).await?;
+            ws_stream
+                .send(Message::Text(eval_req.to_string().into()))
+                .await?;
             if let Ok(Some(Ok(Message::Text(txt)))) =
                 tokio::time::timeout(Duration::from_secs(2), ws_stream.next()).await
             {
@@ -442,8 +501,12 @@ pub async fn execute_browser_action(
             tokio::time::sleep(Duration::from_millis(500)).await;
             screenshot_base64 = capture_page_screenshot(&mut ws_stream, 51).await;
             let (t, u) = get_page_info(&mut ws_stream, 52).await;
-            if !t.is_empty() { page_title = t; }
-            if !u.is_empty() { current_url = u; }
+            if !t.is_empty() {
+                page_title = t;
+            }
+            if !u.is_empty() {
+                current_url = u;
+            }
         }
 
         "press" | "key" => {
@@ -460,7 +523,9 @@ pub async fn execute_browser_action(
                         "text": "\r"
                     }
                 });
-                let _ = ws_stream.send(Message::Text(key_down.to_string().into())).await;
+                let _ = ws_stream
+                    .send(Message::Text(key_down.to_string().into()))
+                    .await;
                 tokio::time::sleep(Duration::from_millis(50)).await;
                 let key_up = json!({
                     "id": 66,
@@ -470,7 +535,9 @@ pub async fn execute_browser_action(
                         "windowsVirtualKeyCode": 13
                     }
                 });
-                let _ = ws_stream.send(Message::Text(key_up.to_string().into())).await;
+                let _ = ws_stream
+                    .send(Message::Text(key_up.to_string().into()))
+                    .await;
             }
 
             let press_expr = format!(
@@ -495,7 +562,9 @@ pub async fn execute_browser_action(
                 "method": "Runtime.evaluate",
                 "params": { "expression": press_expr }
             });
-            ws_stream.send(Message::Text(eval_req.to_string().into())).await?;
+            ws_stream
+                .send(Message::Text(eval_req.to_string().into()))
+                .await?;
             if let Ok(Some(Ok(Message::Text(txt)))) =
                 tokio::time::timeout(Duration::from_secs(2), ws_stream.next()).await
             {
@@ -509,8 +578,12 @@ pub async fn execute_browser_action(
             tokio::time::sleep(Duration::from_millis(500)).await;
             screenshot_base64 = capture_page_screenshot(&mut ws_stream, 61).await;
             let (t, u) = get_page_info(&mut ws_stream, 62).await;
-            if !t.is_empty() { page_title = t; }
-            if !u.is_empty() { current_url = u; }
+            if !t.is_empty() {
+                page_title = t;
+            }
+            if !u.is_empty() {
+                current_url = u;
+            }
         }
 
         "evaluate" => {
@@ -520,7 +593,9 @@ pub async fn execute_browser_action(
                 "method": "Runtime.evaluate",
                 "params": { "expression": script }
             });
-            ws_stream.send(Message::Text(eval_req.to_string().into())).await?;
+            ws_stream
+                .send(Message::Text(eval_req.to_string().into()))
+                .await?;
 
             if let Ok(Some(Ok(Message::Text(txt)))) =
                 tokio::time::timeout(Duration::from_secs(2), ws_stream.next()).await
@@ -533,8 +608,12 @@ pub async fn execute_browser_action(
                 }
             }
             let (t, u) = get_page_info(&mut ws_stream, 41).await;
-            if !t.is_empty() { page_title = t; }
-            if !u.is_empty() { current_url = u; }
+            if !t.is_empty() {
+                page_title = t;
+            }
+            if !u.is_empty() {
+                current_url = u;
+            }
         }
 
         _ => {
@@ -602,7 +681,9 @@ pub async fn sync_cdp_cookies(source_port: u16, target_port: u16) -> Result<usiz
     let source_check = format!("http://127.0.0.1:{}/json/version", source_port);
     let target_check = format!("http://127.0.0.1:{}/json/version", target_port);
 
-    if client.get(&source_check).send().await.is_err() || client.get(&target_check).send().await.is_err() {
+    if client.get(&source_check).send().await.is_err()
+        || client.get(&target_check).send().await.is_err()
+    {
         return Ok(0);
     }
 
@@ -626,7 +707,10 @@ mod tests {
         let result = execute_browser_action(19222, &action).await.unwrap();
         assert!(!result.success);
         assert!(result.error_message.is_some());
-        assert!(result.error_message.unwrap().contains("Chrome is not running"));
+        assert!(result
+            .error_message
+            .unwrap()
+            .contains("Chrome is not running"));
     }
 
     #[test]
@@ -644,6 +728,9 @@ mod tests {
     #[tokio::test]
     async fn test_sync_cdp_cookies_graceful_offline() {
         let synced = sync_cdp_cookies(19222, 19223).await.unwrap();
-        assert_eq!(synced, 0, "Unreachable ports should report 0 synced without failing");
+        assert_eq!(
+            synced, 0,
+            "Unreachable ports should report 0 synced without failing"
+        );
     }
 }

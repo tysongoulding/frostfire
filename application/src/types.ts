@@ -76,6 +76,7 @@ export interface ClusterNode {
 }
 
 export interface AgentEntity {
+  id?: string;
   name: string;
   role: string;
   description?: string;
@@ -84,5 +85,26 @@ export interface AgentEntity {
   memberIds?: string[];
   missionObjective?: string;
   displayNumber?: number;
+  vncPort?: number;
+  vmHost?: string;
+  status?: string;
   vncUrl?: string;
+}
+
+export interface AgentSessionInfo {
+  id: string; // agt_<ulid>
+  agent_id?: string;
+  name?: string;
+  role?: string;
+  description?: string;
+  display_number: number;
+  display_slot?: number;
+  vnc_port: number;
+  rfb_port?: number;
+  cdp_port?: number;
+  vm_host: string;
+  status: string;
+  team_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }

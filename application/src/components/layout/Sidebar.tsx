@@ -6,6 +6,7 @@ import { useSubagentStore, SubagentDefinition } from "../../store/subagentStore"
 import { SubagentDetailModal } from "../agent/SubagentDetailModal";
 import { RenameSubagentModal } from "../modals/RenameSubagentModal";
 import { useToastStore } from "../../store/toastStore";
+import { useFtaStore } from "../../stores/useFtaStore";
 import {
   User,
   MessageSquarePlus,
@@ -47,6 +48,8 @@ export function Sidebar() {
     getAgentMessages,
   } = useSubagentStore();
   const { addToast } = useToastStore();
+  const { hoursSaved, blendedHourlyRate } = useFtaStore();
+  const totalFtaValue = Math.round(hoursSaved * blendedHourlyRate);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [agentsExpanded, setAgentsExpanded] = useState(true);
@@ -480,9 +483,9 @@ export function Sidebar() {
           </div>
           <div className="flex items-baseline justify-between pt-0.5">
             <span className="text-base font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-[#58a6ff] via-purple-400 to-pink-400 font-mono">
-              42.5 <span className="text-xs font-normal text-[#8b949e]">hrs</span>
+              {hoursSaved.toFixed(1)} <span className="text-xs font-normal text-[#8b949e]">hrs</span>
             </span>
-            <span className="text-xs font-bold text-white font-mono">$3,612</span>
+            <span className="text-xs font-bold text-white font-mono">${totalFtaValue.toLocaleString()}</span>
           </div>
         </div>
       </div>
@@ -501,7 +504,7 @@ export function Sidebar() {
           <Layers className={`w-4 h-4 ${activeView === "cloud" ? "text-[#58a6ff]" : "text-emerald-400"}`} />
           <span className="font-medium">Cloud Studio</span>
           <span className="ml-auto text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            3 Agents
+            {subagents.length} {subagents.length === 1 ? "Agent" : "Agents"}
           </span>
         </button>
       </div>

@@ -57,79 +57,14 @@ interface WorkspaceState {
   loadFileContent: (filePath: string) => Promise<string>;
 }
 
-const DEFAULT_MOCK_FILES: FileNode[] = [
-  {
-    path: "src",
-    name: "src",
-    isDir: true,
-    children: [
-      { path: "src/main.rs", name: "main.rs", isDir: false, size: 2450 },
-      { path: "src/lib.rs", name: "lib.rs", isDir: false, size: 1890 },
-      {
-        path: "src/cli",
-        name: "cli",
-        isDir: true,
-        children: [
-          { path: "src/cli/mod.rs", name: "mod.rs", isDir: false, size: 3120 },
-          { path: "src/cli/rpc.rs", name: "rpc.rs", isDir: false, size: 5400 },
-        ],
-      },
-    ],
-  },
-  {
-    path: "crates",
-    name: "crates",
-    isDir: true,
-    children: [
-      {
-        path: "crates/rho-engine",
-        name: "rho-engine",
-        isDir: true,
-        children: [
-          { path: "crates/rho-engine/Cargo.toml", name: "Cargo.toml", isDir: false, size: 1200 },
-          { path: "crates/rho-engine/src/lib.rs", name: "lib.rs", isDir: false, size: 3400 },
-        ],
-      },
-      {
-        path: "crates/rho-harness-core",
-        name: "rho-harness-core",
-        isDir: true,
-        children: [
-          { path: "crates/rho-harness-core/Cargo.toml", name: "Cargo.toml", isDir: false, size: 980 },
-          { path: "crates/rho-harness-core/src/lib.rs", name: "lib.rs", isDir: false, size: 2100 },
-        ],
-      },
-      {
-        path: "crates/rho-plugin-sdk",
-        name: "rho-plugin-sdk",
-        isDir: true,
-        children: [
-          { path: "crates/rho-plugin-sdk/Cargo.toml", name: "Cargo.toml", isDir: false, size: 850 },
-          { path: "crates/rho-plugin-sdk/src/lib.rs", name: "lib.rs", isDir: false, size: 1400 },
-        ],
-      },
-    ],
-  },
-  {
-    path: "lota",
-    name: "lota",
-    isDir: true,
-    children: [
-      { path: "lota/package.json", name: "package.json", isDir: false, size: 1100 },
-      { path: "lota/src/App.tsx", name: "App.tsx", isDir: false, size: 2800 },
-      { path: "lota/README.md", name: "README.md", isDir: false, size: 3200 },
-    ],
-  },
-];
-
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
-  workspacePath: "c:\\Users\\tyson\\.repo\\personal\\rho",
-  repoName: "rho",
-  gitBranch: "feature/wire-up",
+  workspacePath: "",
+  repoName: "",
+  gitBranch: "production",
   worktree: "main",
-  remoteUrl: "https://github.com/tysongoulding/rho-lota",
+  remoteUrl: "",
   remoteProvider: "github",
-  files: DEFAULT_MOCK_FILES,
+  files: [],
   selectedFile: null,
   attachedFiles: [],
   maxContextTokens: 128000,
@@ -177,7 +112,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         const mapped = rawEntries.map(mapPayloadToNode);
         set({ files: mapped, isLoadingFiles: false });
       } catch (err) {
-        console.warn("Failed to fetch workspace files via Tauri, keeping mock fallback:", err);
+        console.warn("Failed to fetch workspace files via Tauri:", err);
         set({ isLoadingFiles: false });
       }
     }

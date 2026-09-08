@@ -108,7 +108,7 @@ export function SessionGraphViewer() {
         <div className="bg-[#161b22] border border-[#30363d] rounded-xl p-4 space-y-3">
           <h3 className="text-xs font-semibold text-white flex items-center space-x-1.5">
             <History className="w-3.5 h-3.5 text-purple-400" />
-            <span>Persisted Session Checkpoints (~/.config/rho/sessions)</span>
+            <span>Persisted Session Checkpoints (~/.config/frostfireOS/sessions)</span>
           </h3>
 
           <div className="space-y-2">

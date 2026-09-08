@@ -102,7 +102,12 @@ impl McpServerConfig {
         self
     }
 
-    pub fn with_auto_restart(mut self, auto_restart: bool, max_attempts: u32, backoff_ms: u64) -> Self {
+    pub fn with_auto_restart(
+        mut self,
+        auto_restart: bool,
+        max_attempts: u32,
+        backoff_ms: u64,
+    ) -> Self {
         self.auto_restart = auto_restart;
         self.max_restart_attempts = max_attempts;
         self.restart_backoff_ms = backoff_ms;
@@ -157,7 +162,9 @@ impl McpSupervisor {
         match ready_rx.await {
             Ok(Ok(())) => Ok(supervisor),
             Ok(Err(e)) => Err(e),
-            Err(_) => Err(McpError::ProcessSpawnFailed("Supervisor task dropped before initialization".into())),
+            Err(_) => Err(McpError::ProcessSpawnFailed(
+                "Supervisor task dropped before initialization".into(),
+            )),
         }
     }
 
@@ -172,32 +179,46 @@ impl McpSupervisor {
     }
 
     /// Send a JSON-RPC request to the child MCP server over stdin and wait for the matching response.
-    pub async fn send_request(&self, mut request: JsonRpcRequest) -> Result<JsonRpcResponse, McpError> {
+    pub async fn send_request(
+        &self,
+        mut request: JsonRpcRequest,
+    ) -> Result<JsonRpcResponse, McpError> {
         if self.inner.shutdown_requested.load(Ordering::SeqCst) {
             return Err(McpError::SupervisorTerminated);
         }
 
         if !self.is_alive() {
-            return Err(McpError::ProcessExited("Child MCP process is not running".into()));
+            return Err(McpError::ProcessExited(
+                "Child MCP process is not running".into(),
+            ));
         }
 
         // Ensure request has a valid id
-        let id_val = request.id.clone().unwrap_or_else(|| {
-            serde_json::json!(uuid::Uuid::new_v4().to_string())
-        });
+        let id_val = request
+            .id
+            .clone()
+            .unwrap_or_else(|| serde_json::json!(uuid::Uuid::new_v4().to_string()));
         request.id = Some(id_val.clone());
         let id_key = id_val.to_string();
 
         let (resp_tx, resp_rx) = oneshot::channel();
         {
-            let mut pending = self.inner.pending.lock().map_err(|_| McpError::Other("Pending lock poisoned".into()))?;
+            let mut pending = self
+                .inner
+                .pending
+                .lock()
+                .map_err(|_| McpError::Other("Pending lock poisoned".into()))?;
             pending.insert(id_key.clone(), resp_tx);
         }
 
         let payload = match serde_json::to_string(&request) {
             Ok(s) => s + "\n",
             Err(e) => {
-                let mut pending = self.inner.pending.lock().map_err(|_| McpError::Other("Pending lock poisoned".into()))?;
+                let mut pending = self
+                    .inner
+                    .pending
+                    .lock()
+                    .map_err(|_| McpError::Other("Pending lock poisoned".into()))?;
                 pending.remove(&id_key);
                 return Err(McpError::Serialization(e));
             }
@@ -206,19 +227,29 @@ impl McpSupervisor {
         let stdin_opt = self.inner.stdin_tx.read().await.clone();
         if let Some(stdin_tx) = stdin_opt {
             if stdin_tx.send(payload).await.is_err() {
-                let mut pending = self.inner.pending.lock().map_err(|_| McpError::Other("Pending lock poisoned".into()))?;
+                let mut pending = self
+                    .inner
+                    .pending
+                    .lock()
+                    .map_err(|_| McpError::Other("Pending lock poisoned".into()))?;
                 pending.remove(&id_key);
                 return Err(McpError::ChannelClosed);
             }
         } else {
-            let mut pending = self.inner.pending.lock().map_err(|_| McpError::Other("Pending lock poisoned".into()))?;
+            let mut pending = self
+                .inner
+                .pending
+                .lock()
+                .map_err(|_| McpError::Other("Pending lock poisoned".into()))?;
             pending.remove(&id_key);
             return Err(McpError::ProcessExited("Stdin channel unavailable".into()));
         }
 
         match resp_rx.await {
             Ok(res) => res,
-            Err(_) => Err(McpError::ProcessExited("Response channel closed before receiving message".into())),
+            Err(_) => Err(McpError::ProcessExited(
+                "Response channel closed before receiving message".into(),
+            )),
         }
     }
 
@@ -234,7 +265,11 @@ impl McpSupervisor {
         }
 
         // Drain pending requests
-        let mut pending = self.inner.pending.lock().map_err(|_| McpError::Other("Pending lock poisoned".into()))?;
+        let mut pending = self
+            .inner
+            .pending
+            .lock()
+            .map_err(|_| McpError::Other("Pending lock poisoned".into()))?;
         for (_, sender) in pending.drain() {
             let _ = sender.send(Err(McpError::SupervisorTerminated));
         }
@@ -345,7 +380,9 @@ impl McpSupervisor {
                     // On EOF: drain pending requests with ProcessExited
                     let mut p = pending_clone.lock().unwrap();
                     for (_, sender) in p.drain() {
-                        let _ = sender.send(Err(McpError::ProcessExited("Child process stdout closed".into())));
+                        let _ = sender.send(Err(McpError::ProcessExited(
+                            "Child process stdout closed".into(),
+                        )));
                     }
                 });
 
@@ -386,7 +423,8 @@ impl McpSupervisor {
 
                 // Auto-restart handling
                 if this.inner.config.auto_restart {
-                    let current_restarts = this.inner.restart_count.fetch_add(1, Ordering::SeqCst) + 1;
+                    let current_restarts =
+                        this.inner.restart_count.fetch_add(1, Ordering::SeqCst) + 1;
                     if current_restarts <= this.inner.config.max_restart_attempts {
                         tracing::info!(
                             "Restarting MCP server '{}' (attempt {}/{}) after {}ms backoff...",
@@ -396,7 +434,10 @@ impl McpSupervisor {
                             this.inner.config.restart_backoff_ms
                         );
 
-                        tokio::time::sleep(Duration::from_millis(this.inner.config.restart_backoff_ms)).await;
+                        tokio::time::sleep(Duration::from_millis(
+                            this.inner.config.restart_backoff_ms,
+                        ))
+                        .await;
                     } else {
                         tracing::error!(
                             "MCP server '{}' reached max restart attempts ({})",
@@ -451,7 +492,11 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(150)).await;
 
         let restarts = supervisor.restart_count();
-        assert!(restarts >= 1, "Expected at least 1 restart, got {}", restarts);
+        assert!(
+            restarts >= 1,
+            "Expected at least 1 restart, got {}",
+            restarts
+        );
 
         supervisor.stop().await.unwrap();
         assert!(!supervisor.is_alive());
@@ -473,7 +518,8 @@ mod tests {
         let config = McpServerConfig::new("echo-server", "sh")
             .with_args(vec![
                 "-c".into(),
-                "read line; echo '{\"jsonrpc\":\"2.0\",\"id\":123,\"result\":{\"status\":\"ok\"}}'".into(),
+                "read line; echo '{\"jsonrpc\":\"2.0\",\"id\":123,\"result\":{\"status\":\"ok\"}}'"
+                    .into(),
             ])
             .with_auto_restart(false, 0, 0);
 

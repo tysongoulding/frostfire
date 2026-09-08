@@ -12,7 +12,7 @@ import {
   Stethoscope,
   GraduationCap,
 } from 'lucide-react';
-import { getVncUrl } from '../../lib/vnc';
+import { getVncUrl, DEFAULT_EC2_HOST } from '../../lib/vnc';
 import { useUserStore } from '../../store/userStore';
 
 export interface TeamMember {
@@ -35,6 +35,9 @@ interface RightPanelProps {
   missionObjective?: string;
   description?: string;
   activeTab?: string;
+  displayNumber?: number;
+  vncPort?: number;
+  vmHost?: string;
 }
 
 export const RightPanel: React.FC<RightPanelProps> = ({
@@ -51,6 +54,9 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   missionObjective = '',
   description = '',
   activeTab,
+  displayNumber: propDisplayNumber,
+  vncPort: propVncPort,
+  vmHost: propVmHost,
 }) => {
   const { activeUserId, getActiveUser } = useUserStore();
   const currentUser = getActiveUser();
@@ -284,22 +290,9 @@ export const RightPanel: React.FC<RightPanelProps> = ({
             ) : (
               /* Agent Screen Box (Only shown for individual agents) */
               (() => {
-                const userOffset = activeUserId === 'user2' ? 3 : activeUserId === 'user3' ? 6 : 0;
-                const baseDisp = agentName.includes('2') || agentRole?.includes(':2') || agentRole?.includes(':5') || agentRole?.includes(':8')
-                  ? 2
-                  : agentName.includes('3') || agentRole?.includes(':3') || agentRole?.includes(':6') || agentRole?.includes(':9')
-                  ? 3
-                  : 1;
-                const displayNumber = userOffset + baseDisp;
-                const agentKey: 'agent1' | 'agent2' | 'agent3' = baseDisp === 2 ? 'agent2' : baseDisp === 3 ? 'agent3' : 'agent1';
-                const vmHost = currentUser.vmHost;
-                const defaultPorts: Record<'agent1' | 'agent2' | 'agent3', number> =
-                  activeUserId === 'user2'
-                    ? { agent1: 6083, agent2: 6084, agent3: 6085 }
-                    : activeUserId === 'user3'
-                    ? { agent1: 6086, agent2: 6087, agent3: 6088 }
-                    : { agent1: 6080, agent2: 6081, agent3: 6082 };
-                const agentPort = currentUser.agentPorts?.[agentKey] || defaultPorts[agentKey];
+                const displayNumber = propDisplayNumber ?? 1;
+                const vmHost = propVmHost || currentUser.vmHost || DEFAULT_EC2_HOST;
+                const agentPort = propVncPort || (6079 + displayNumber);
                 const vncUrl = getVncUrl(displayNumber, { host: vmHost, port: agentPort, scale: 'fit' });
                 return (
                   <div className="space-y-1.5">

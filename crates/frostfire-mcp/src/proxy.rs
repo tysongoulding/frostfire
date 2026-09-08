@@ -133,7 +133,9 @@ impl CircuitBreaker {
             CircuitState::Open => {
                 if let Some(opened) = self.opened_at {
                     if opened.elapsed() >= self.reset_timeout {
-                        tracing::info!("Circuit breaker transitioning from Open to HalfOpen (probing)");
+                        tracing::info!(
+                            "Circuit breaker transitioning from Open to HalfOpen (probing)"
+                        );
                         self.state = CircuitState::HalfOpen;
                         return Ok(());
                     }
@@ -157,7 +159,9 @@ impl CircuitBreaker {
 
     pub fn record_failure(&mut self) {
         self.consecutive_failures += 1;
-        if self.state == CircuitState::HalfOpen || self.consecutive_failures >= self.failure_threshold {
+        if self.state == CircuitState::HalfOpen
+            || self.consecutive_failures >= self.failure_threshold
+        {
             if self.state != CircuitState::Open {
                 tracing::warn!(
                     "Circuit breaker tripped to Open after {} consecutive failures",
@@ -217,7 +221,10 @@ impl McpProxy {
                 None => {
                     return Err(JsonRpcResponse::error(
                         request.id.clone(),
-                        JsonRpcError::new(INVALID_PARAMS, "Missing tool 'name' in tools/call parameters"),
+                        JsonRpcError::new(
+                            INVALID_PARAMS,
+                            "Missing tool 'name' in tools/call parameters",
+                        ),
                     ));
                 }
             };
@@ -315,14 +322,19 @@ impl McpProxy {
         supervisor: &McpSupervisor,
         request: JsonRpcRequest,
     ) -> Result<JsonRpcResponse, McpError> {
-        self.forward_request(request, |req| async move {
-            supervisor.send_request(req).await
-        })
+        self.forward_request(
+            request,
+            |req| async move { supervisor.send_request(req).await },
+        )
         .await
     }
 
     /// Process a raw JSON-RPC string through the proxy and return the serialized JSON response.
-    pub async fn handle_raw_json<F, Fut>(&self, raw_json: &str, forwarder: F) -> Result<String, McpError>
+    pub async fn handle_raw_json<F, Fut>(
+        &self,
+        raw_json: &str,
+        forwarder: F,
+    ) -> Result<String, McpError>
     where
         F: FnOnce(JsonRpcRequest) -> Fut,
         Fut: std::future::Future<Output = Result<JsonRpcResponse, McpError>>,
@@ -348,9 +360,10 @@ impl McpProxy {
         supervisor: &McpSupervisor,
         raw_json: &str,
     ) -> Result<String, McpError> {
-        self.handle_raw_json(raw_json, |req| async move {
-            supervisor.send_request(req).await
-        })
+        self.handle_raw_json(
+            raw_json,
+            |req| async move { supervisor.send_request(req).await },
+        )
         .await
     }
 }
@@ -414,16 +427,24 @@ mod tests {
         let blocked_resp = proxy
             .forward_request(blocked_req, |_| async {
                 called = true;
-                Ok(JsonRpcResponse::success(Some(serde_json::json!(2)), serde_json::json!({})))
+                Ok(JsonRpcResponse::success(
+                    Some(serde_json::json!(2)),
+                    serde_json::json!({}),
+                ))
             })
             .await
             .unwrap();
 
-        assert!(!called, "Backend forwarder must NOT be called for blocked tools");
+        assert!(
+            !called,
+            "Backend forwarder must NOT be called for blocked tools"
+        );
         assert!(blocked_resp.is_error());
         let err = blocked_resp.error.unwrap();
         assert_eq!(err.code, TOOL_FORBIDDEN);
-        assert!(err.message.contains("Tool 'delete_database' is not permitted"));
+        assert!(err
+            .message
+            .contains("Tool 'delete_database' is not permitted"));
 
         // 3. Non-tool call (e.g. tools/list or initialize) passes through
         let list_req = JsonRpcRequest::new(Some(serde_json::json!(3)), "tools/list", None);
@@ -490,7 +511,10 @@ mod tests {
         // Next request enters HalfOpen and succeeds, recovering circuit to Closed
         let r4 = proxy
             .forward_request(slow_req(), |_| async {
-                Ok(JsonRpcResponse::success(Some(serde_json::json!(1)), serde_json::json!("recovered")))
+                Ok(JsonRpcResponse::success(
+                    Some(serde_json::json!(1)),
+                    serde_json::json!("recovered"),
+                ))
             })
             .await
             .unwrap();

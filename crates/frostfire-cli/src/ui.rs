@@ -1,13 +1,15 @@
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{error, info, warn};
 
-use frostfire_exec::{AtomicPatchApplicator, PatchOptions, PtyMultiplexer, SpawnOptions, WorkspaceJail};
+use frostfire_exec::{
+    AtomicPatchApplicator, PatchOptions, PtyMultiplexer, SpawnOptions, WorkspaceJail,
+};
 use frostfire_proto::tunnel::UserPrompt;
 use frostfire_security::MerkleAuditLedger;
 use frostfire_tunnel::{TunnelClient, TunnelConfig};
@@ -100,7 +102,11 @@ pub async fn start_ui_server(
 
     info!("🚀 Frostfire UI server listening at {}:{}", host, port);
     println!("\n========================================================");
-    println!("⚡ Frostfire Swarm UI active at: http://{}:{}", if host == "0.0.0.0" { "0.0.0.0" } else { host }, port);
+    println!(
+        "⚡ Frostfire Swarm UI active at: http://{}:{}",
+        if host == "0.0.0.0" { "0.0.0.0" } else { host },
+        port
+    );
     println!("🔗 Local Browser Access:        {}", display_url);
     println!("🌐 Network Access (Proxmox/LAN): http://<YOUR_IP>:{}", port);
     println!("🖥️ Remote VNC Host:            {}", target_vnc);
@@ -116,7 +122,9 @@ pub async fn start_ui_server(
         #[cfg(target_os = "macos")]
         let _ = std::process::Command::new("open").arg(&display_url).spawn();
         #[cfg(all(not(windows), not(target_os = "macos")))]
-        let _ = std::process::Command::new("xdg-open").arg(&display_url).spawn();
+        let _ = std::process::Command::new("xdg-open")
+            .arg(&display_url)
+            .spawn();
     }
 
     let shared_workspace = Arc::new(workspace_root);
@@ -216,10 +224,17 @@ async fn handle_connection(
 
     match (method, path) {
         ("GET", "/") | ("GET", "/index.html") => {
-            let html = std::fs::read_to_string(workspace.join("crates/frostfire-cli/ui/index.html"))
-                .or_else(|_| std::fs::read_to_string("crates/frostfire-cli/ui/index.html"))
-                .unwrap_or_else(|_| INDEX_HTML.to_string());
-            send_http_response(&mut stream, 200, "text/html; charset=utf-8", html.as_bytes()).await?;
+            let html =
+                std::fs::read_to_string(workspace.join("crates/frostfire-cli/ui/index.html"))
+                    .or_else(|_| std::fs::read_to_string("crates/frostfire-cli/ui/index.html"))
+                    .unwrap_or_else(|_| INDEX_HTML.to_string());
+            send_http_response(
+                &mut stream,
+                200,
+                "text/html; charset=utf-8",
+                html.as_bytes(),
+            )
+            .await?;
         }
 
         ("HEAD", "/") | ("HEAD", "/index.html") => {
@@ -232,7 +247,10 @@ async fn handle_connection(
 
             if is_remote {
                 let remote_url = format!("http://{}:3000/api/status", vnc_ip);
-                if let Ok(client) = reqwest::Client::builder().timeout(Duration::from_millis(1500)).build() {
+                if let Ok(client) = reqwest::Client::builder()
+                    .timeout(Duration::from_millis(1500))
+                    .build()
+                {
                     if let Ok(resp) = client.get(&remote_url).send().await {
                         if resp.status().is_success() {
                             if let Ok(mut val) = resp.json::<Value>().await {
@@ -252,9 +270,20 @@ async fn handle_connection(
                 .ok();
 
             let (chrome_attached, desktop_active) = if let Some(ref c) = client {
-                let chrome = c.get("http://127.0.0.1:9222/json/version").send().await.is_ok();
-                let novnc = c.get(format!("http://{}:6080", vnc_ip)).send().await.is_ok()
-                    || c.get(format!("http://{}:6081", vnc_ip)).send().await.is_ok()
+                let chrome = c
+                    .get("http://127.0.0.1:9222/json/version")
+                    .send()
+                    .await
+                    .is_ok();
+                let novnc = c
+                    .get(format!("http://{}:6080", vnc_ip))
+                    .send()
+                    .await
+                    .is_ok()
+                    || c.get(format!("http://{}:6081", vnc_ip))
+                        .send()
+                        .await
+                        .is_ok()
                     || c.get("http://127.0.0.1:6080").send().await.is_ok()
                     || c.get("http://127.0.0.1:6081").send().await.is_ok()
                     || c.get("http://127.0.0.1:8444").send().await.is_ok();
@@ -263,11 +292,12 @@ async fn handle_connection(
                 (false, false)
             };
 
-            let effective_vnc_host = if (vnc_ip == "127.0.0.1" || vnc_ip == "localhost") && cfg!(target_os = "linux") {
-                "34.106.12.222"
-            } else {
-                vnc_ip
-            };
+            let effective_vnc_host =
+                if (vnc_ip == "127.0.0.1" || vnc_ip == "localhost") && cfg!(target_os = "linux") {
+                    "34.106.12.222"
+                } else {
+                    vnc_ip
+                };
 
             let body = json!({
                 "gateway_url": gateway_url.as_str(),
@@ -300,11 +330,15 @@ async fn handle_connection(
 
             if is_remote {
                 let remote_url = format!("http://{}:3000/api/audit", vnc_ip);
-                if let Ok(client) = reqwest::Client::builder().timeout(Duration::from_millis(2000)).build() {
+                if let Ok(client) = reqwest::Client::builder()
+                    .timeout(Duration::from_millis(2000))
+                    .build()
+                {
                     if let Ok(resp) = client.get(&remote_url).send().await {
                         if resp.status().is_success() {
                             let bytes = resp.bytes().await.unwrap_or_default();
-                            send_http_response(&mut stream, 200, "application/json", &bytes).await?;
+                            send_http_response(&mut stream, 200, "application/json", &bytes)
+                                .await?;
                             return Ok(());
                         }
                     }
@@ -329,13 +363,20 @@ async fn handle_connection(
             }
 
             if let Some(ref ledger) = *guard {
-                let integrity = ledger.verify_integrity().unwrap_or(frostfire_security::IntegrityReport {
-                    is_valid: false,
-                    verified_count: 0,
-                    latest_hash: None,
-                    violation: None,
-                });
-                let root = ledger.compute_merkle_root().ok().flatten().unwrap_or_else(|| "Genesis".into());
+                let integrity =
+                    ledger
+                        .verify_integrity()
+                        .unwrap_or(frostfire_security::IntegrityReport {
+                            is_valid: false,
+                            verified_count: 0,
+                            latest_hash: None,
+                            violation: None,
+                        });
+                let root = ledger
+                    .compute_merkle_root()
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| "Genesis".into());
 
                 let entries = query_recent_audit_entries(ledger);
                 let resp = json!({
@@ -357,11 +398,15 @@ async fn handle_connection(
 
             if is_remote {
                 let remote_url = format!("http://{}:3000/api/key", vnc_ip);
-                if let Ok(client) = reqwest::Client::builder().timeout(Duration::from_millis(2000)).build() {
+                if let Ok(client) = reqwest::Client::builder()
+                    .timeout(Duration::from_millis(2000))
+                    .build()
+                {
                     if let Ok(resp) = client.get(&remote_url).send().await {
                         if resp.status().is_success() {
                             let bytes = resp.bytes().await.unwrap_or_default();
-                            send_http_response(&mut stream, 200, "application/json", &bytes).await?;
+                            send_http_response(&mut stream, 200, "application/json", &bytes)
+                                .await?;
                             return Ok(());
                         }
                     }
@@ -369,7 +414,8 @@ async fn handle_connection(
             }
 
             let key_opt = frostfire_engine::GeminiClient::resolve_api_key();
-            let model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3.8-flash".to_string());
+            let model =
+                std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3.8-flash".to_string());
             let resp = match key_opt {
                 Some(key) if !key.is_empty() => {
                     let preview = if key.len() > 8 {
@@ -389,26 +435,33 @@ async fn handle_connection(
             let is_remote = is_remote_target(vnc_ip);
 
             let parsed: Value = serde_json::from_str(body).unwrap_or_default();
-            let raw_key = parsed.get("api_key")
+            let raw_key = parsed
+                .get("api_key")
                 .or_else(|| parsed.get("apiKey"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .trim()
                 .replace(['\r', '\n'], "");
-            let model = parsed.get("model")
+            let model = parsed
+                .get("model")
                 .and_then(|v| v.as_str())
                 .unwrap_or("gemini-3.8-flash")
                 .trim();
 
             if is_remote {
                 let remote_url = format!("http://{}:3000/api/key", vnc_ip);
-                if let Ok(client) = reqwest::Client::builder().timeout(Duration::from_secs(5)).build() {
+                if let Ok(client) = reqwest::Client::builder()
+                    .timeout(Duration::from_secs(5))
+                    .build()
+                {
                     let _ = client.post(&remote_url).json(&parsed).send().await;
                 }
             }
 
             if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
-                let config_dir = std::path::Path::new(&home).join(".config").join("frostfire");
+                let config_dir = std::path::Path::new(&home)
+                    .join(".config")
+                    .join("frostfire");
                 let _ = std::fs::create_dir_all(&config_dir);
                 let key_file = config_dir.join("gemini.key");
                 let _ = std::fs::write(&key_file, &raw_key);
@@ -431,7 +484,10 @@ async fn handle_connection(
 
             if is_remote {
                 let remote_url = format!("http://{}:3000/api/clear", vnc_ip);
-                if let Ok(client) = reqwest::Client::builder().timeout(Duration::from_millis(2000)).build() {
+                if let Ok(client) = reqwest::Client::builder()
+                    .timeout(Duration::from_millis(2000))
+                    .build()
+                {
                     let _ = client.post(&remote_url).send().await;
                 }
             }
@@ -454,12 +510,16 @@ async fn handle_connection(
 
             if is_remote {
                 let remote_url = format!("http://{}:3000/api/chat", vnc_ip);
-                if let Ok(client) = reqwest::Client::builder().timeout(Duration::from_secs(60)).build() {
+                if let Ok(client) = reqwest::Client::builder()
+                    .timeout(Duration::from_secs(60))
+                    .build()
+                {
                     match client.post(&remote_url).json(&req).send().await {
                         Ok(resp) => {
                             let status = resp.status().as_u16();
                             let bytes = resp.bytes().await.unwrap_or_default();
-                            send_http_response(&mut stream, status, "application/json", &bytes).await?;
+                            send_http_response(&mut stream, status, "application/json", &bytes)
+                                .await?;
                             return Ok(());
                         }
                         Err(e) => {
@@ -513,7 +573,9 @@ async fn execute_turn_via_tunnel(
         if !clean.is_empty() {
             std::env::set_var("GEMINI_API_KEY", &clean);
             if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
-                let dir = std::path::Path::new(&home).join(".config").join("frostfire");
+                let dir = std::path::Path::new(&home)
+                    .join(".config")
+                    .join("frostfire");
                 let _ = std::fs::create_dir_all(&dir);
                 let _ = std::fs::write(dir.join("gemini.key"), &clean);
             }
@@ -549,22 +611,29 @@ async fn execute_turn_via_tunnel(
                 frame_id: uuid::Uuid::new_v4().to_string(),
                 agent_id: "local-ui-agent".into(),
                 timestamp_unix_ms: chrono::Utc::now().timestamp_millis(),
-                payload: Some(frostfire_proto::tunnel::tunnel_client_frame::Payload::UserPrompt(prompt.clone())),
+                payload: Some(
+                    frostfire_proto::tunnel::tunnel_client_frame::Payload::UserPrompt(
+                        prompt.clone(),
+                    ),
+                ),
             };
 
             let _ = client.send(prompt_frame).await;
 
             let turn_timeout = tokio::time::Instant::now() + Duration::from_secs(45);
             while tokio::time::Instant::now() < turn_timeout {
-                let server_frame = match tokio::time::timeout(Duration::from_secs(12), client.recv()).await {
-                    Ok(Some(f)) => f,
-                    Ok(None) => break,
-                    Err(_) => break,
-                };
+                let server_frame =
+                    match tokio::time::timeout(Duration::from_secs(12), client.recv()).await {
+                        Ok(Some(f)) => f,
+                        Ok(None) => break,
+                        Err(_) => break,
+                    };
 
                 if let Some(payload) = server_frame.payload {
                     match payload {
-                        frostfire_proto::tunnel::tunnel_server_frame::Payload::AgentMessage(msg) => {
+                        frostfire_proto::tunnel::tunnel_server_frame::Payload::AgentMessage(
+                            msg,
+                        ) => {
                             agent_message = msg.content;
                             tool_calls = msg.tool_calls;
                             if msg.is_final {
@@ -580,7 +649,10 @@ async fn execute_turn_via_tunnel(
         }
         Err(_) => {
             // 2. Gateway is offline -> evaluate prompt directly via in-process GeminiClient / TurnEngine
-            info!("Cloud Gateway offline at {}, evaluating prompt directly with Gemini Turn Engine", gateway_url);
+            info!(
+                "Cloud Gateway offline at {}, evaluating prompt directly with Gemini Turn Engine",
+                gateway_url
+            );
             let gemini = if let Some(ref key) = req.api_key {
                 if !key.trim().is_empty() {
                     frostfire_engine::GeminiClient::with_api_key(key.trim(), req.model.clone())
@@ -610,10 +682,20 @@ async fn execute_turn_via_tunnel(
 
     // 3. Execute all scheduled tool frames inside the workspace jail & PTY multiplexer
     for payload in server_frames_to_execute {
-        execute_tool_frame_locally(payload, &jail, &pty_mux, &diff_app, &ledger, &mut tool_executions).await?;
+        execute_tool_frame_locally(
+            payload,
+            &jail,
+            &pty_mux,
+            &diff_app,
+            &ledger,
+            &mut tool_executions,
+        )
+        .await?;
     }
 
-    let merkle_root = ledger.compute_merkle_root()?.unwrap_or_else(|| "Genesis".into());
+    let merkle_root = ledger
+        .compute_merkle_root()?
+        .unwrap_or_else(|| "Genesis".into());
 
     Ok(ChatResponse {
         session_id: req.session_id.clone(),
@@ -641,7 +723,13 @@ async fn execute_tool_frame_locally(
                 } else {
                     format!("{} {}", cmd.command, cmd.args.join(" "))
                 };
-                if full_line.contains(' ') || full_line.contains(';') || full_line.contains('&') || full_line.contains('|') || cmd.command == "ls" || cmd.command == "dir" {
+                if full_line.contains(' ')
+                    || full_line.contains(';')
+                    || full_line.contains('&')
+                    || full_line.contains('|')
+                    || cmd.command == "ls"
+                    || cmd.command == "dir"
+                {
                     ("cmd.exe".to_string(), vec!["/c".to_string(), full_line])
                 } else {
                     (cmd.command.clone(), cmd.args.clone())
@@ -654,14 +742,22 @@ async fn execute_tool_frame_locally(
                 } else {
                     format!("{} {}", cmd.command, cmd.args.join(" "))
                 };
-                if full_line.contains(' ') || full_line.contains(';') || full_line.contains('&') || full_line.contains('|') {
+                if full_line.contains(' ')
+                    || full_line.contains(';')
+                    || full_line.contains('&')
+                    || full_line.contains('|')
+                {
                     ("/bin/bash".to_string(), vec!["-c".to_string(), full_line])
                 } else {
                     (cmd.command.clone(), cmd.args.clone())
                 }
             };
 
-            let cwd_path = if cmd.working_dir.is_empty() { None } else { Some(Path::new(&cmd.working_dir)) };
+            let cwd_path = if cmd.working_dir.is_empty() {
+                None
+            } else {
+                Some(Path::new(&cmd.working_dir))
+            };
             let target_cwd = jail.validate_cwd(cwd_path)?;
 
             let mut spawn_opts = SpawnOptions::new(&final_command)
@@ -728,37 +824,42 @@ async fn execute_tool_frame_locally(
         frostfire_proto::tunnel::tunnel_server_frame::Payload::McpRequest(mcp_req)
             if mcp_req.server_name == "browser" || mcp_req.tool_name == "browser_action" =>
         {
-            let action_req: crate::browser::BrowserAction = serde_json::from_str(&mcp_req.arguments_json)
-                    .unwrap_or_else(|_| crate::browser::BrowserAction {
+            let action_req: crate::browser::BrowserAction =
+                serde_json::from_str(&mcp_req.arguments_json).unwrap_or_else(|_| {
+                    crate::browser::BrowserAction {
                         action: "navigate".into(),
                         url: Some("https://www.google.com".into()),
                         selector: None,
                         text: None,
-                    });
-
-                let b_res = crate::browser::execute_browser_action(9222, &action_req).await?;
-                let res_json = serde_json::to_string(&b_res).unwrap_or_default();
-                ledger.append("local-ui-agent", "browser_action", res_json.as_bytes())?;
-
-                let output = if b_res.content.is_empty() {
-                    b_res.error_message.clone().unwrap_or_else(|| "Browser action completed".into())
-                } else {
-                    b_res.content.clone()
-                };
-
-                tool_executions.push(ExecutedTool {
-                    tool_type: "browser_action".into(),
-                    command: format!("browser: {}", b_res.action),
-                    args: vec![b_res.url.clone(), action_req.selector.unwrap_or_default()],
-                    output,
-                    file_path: String::new(),
-                    lines_added: 0,
-                    lines_removed: 0,
-                    screenshot_base64: b_res.screenshot_base64,
-                    url: Some(b_res.url),
-                    title: Some(b_res.title),
+                    }
                 });
-            }
+
+            let b_res = crate::browser::execute_browser_action(9222, &action_req).await?;
+            let res_json = serde_json::to_string(&b_res).unwrap_or_default();
+            ledger.append("local-ui-agent", "browser_action", res_json.as_bytes())?;
+
+            let output = if b_res.content.is_empty() {
+                b_res
+                    .error_message
+                    .clone()
+                    .unwrap_or_else(|| "Browser action completed".into())
+            } else {
+                b_res.content.clone()
+            };
+
+            tool_executions.push(ExecutedTool {
+                tool_type: "browser_action".into(),
+                command: format!("browser: {}", b_res.action),
+                args: vec![b_res.url.clone(), action_req.selector.unwrap_or_default()],
+                output,
+                file_path: String::new(),
+                lines_added: 0,
+                lines_removed: 0,
+                screenshot_base64: b_res.screenshot_base64,
+                url: Some(b_res.url),
+                title: Some(b_res.title),
+            });
+        }
         _ => {}
     }
     Ok(())
@@ -866,7 +967,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_ui_http_server_endpoints() {
-        let temp_dir = std::env::temp_dir().join(format!("frostfire_ui_test_{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("frostfire_ui_test_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -891,7 +993,10 @@ mod tests {
 
         // 1. Test GET /
         let mut client = TcpStream::connect(addr).await.unwrap();
-        client.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n").await.unwrap();
+        client
+            .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .await
+            .unwrap();
         let mut buf = vec![0u8; 4096];
         let n = client.read(&mut buf).await.unwrap();
         let resp = String::from_utf8_lossy(&buf[..n]);
@@ -900,7 +1005,10 @@ mod tests {
 
         // 2. Test GET /api/status
         let mut client = TcpStream::connect(addr).await.unwrap();
-        client.write_all(b"GET /api/status HTTP/1.1\r\nHost: localhost\r\n\r\n").await.unwrap();
+        client
+            .write_all(b"GET /api/status HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .await
+            .unwrap();
         let mut buf = vec![0u8; 4096];
         let n = client.read(&mut buf).await.unwrap();
         let resp = String::from_utf8_lossy(&buf[..n]);
@@ -909,7 +1017,10 @@ mod tests {
 
         // 3. Test GET /api/audit
         let mut client = TcpStream::connect(addr).await.unwrap();
-        client.write_all(b"GET /api/audit HTTP/1.1\r\nHost: localhost\r\n\r\n").await.unwrap();
+        client
+            .write_all(b"GET /api/audit HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .await
+            .unwrap();
         let mut buf = vec![0u8; 4096];
         let n = client.read(&mut buf).await.unwrap();
         let resp = String::from_utf8_lossy(&buf[..n]);
@@ -918,7 +1029,10 @@ mod tests {
 
         // 4. Test POST /api/clear
         let mut client = TcpStream::connect(addr).await.unwrap();
-        client.write_all(b"POST /api/clear HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n").await.unwrap();
+        client
+            .write_all(b"POST /api/clear HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n")
+            .await
+            .unwrap();
         let mut buf = vec![0u8; 4096];
         let n = client.read(&mut buf).await.unwrap();
         let resp = String::from_utf8_lossy(&buf[..n]);

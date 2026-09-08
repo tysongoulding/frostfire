@@ -5,8 +5,8 @@ use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 use tracing::{debug, error, info, warn};
 
 use frostfire_proto::tunnel::{
-    agent_tunnel_service_client::AgentTunnelServiceClient,
-    tunnel_client_frame, Heartbeat, TunnelClientFrame, TunnelServerFrame,
+    agent_tunnel_service_client::AgentTunnelServiceClient, tunnel_client_frame, Heartbeat,
+    TunnelClientFrame, TunnelServerFrame,
 };
 
 use crate::error::{Result, TunnelError};
@@ -469,7 +469,9 @@ async fn run_tunnel_worker(
 /// Creates a tonic Channel configured with timeouts and TLS if appropriate.
 async fn create_channel(config: &TunnelConfig) -> Result<Channel> {
     let endpoint = Endpoint::from_shared(config.server_url.clone())
-        .map_err(|e| TunnelError::Config(format!("Invalid server URL '{}': {}", config.server_url, e)))?
+        .map_err(|e| {
+            TunnelError::Config(format!("Invalid server URL '{}': {}", config.server_url, e))
+        })?
         .connect_timeout(config.connect_timeout);
 
     let endpoint = if let Some(ref tls) = config.tls_config {
@@ -478,9 +480,7 @@ async fn create_channel(config: &TunnelConfig) -> Result<Channel> {
             .map_err(TunnelError::Transport)?
     } else if config.server_url.starts_with("https://") {
         let tls = ClientTlsConfig::new().with_native_roots();
-        endpoint
-            .tls_config(tls)
-            .map_err(TunnelError::Transport)?
+        endpoint.tls_config(tls).map_err(TunnelError::Transport)?
     } else {
         endpoint
     };

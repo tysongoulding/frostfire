@@ -29,7 +29,9 @@ impl EgressFilter {
         // Check for verbatim n-gram / fragment leakage
         for fragment in &self.proprietary_fragments {
             if response_text.contains(fragment) {
-                return Err("Security Violation: Proprietary instruction leakage intercepted.".to_string());
+                return Err(
+                    "Security Violation: Proprietary instruction leakage intercepted.".to_string(),
+                );
             }
         }
 

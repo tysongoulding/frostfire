@@ -21,24 +21,16 @@ interface SettingsStore {
 }
 
 export const useSettingsStore = create<SettingsStore>((set) => ({
-  systemStatus: {
-    version: APP_VERSION,
-    os: "windows",
-    app_data_dir: "C:\\Users\\tyson\\AppData\\Roaming\\frostfireOS",
-    extensions_dir: "C:\\Users\\tyson\\.frostfireOS\\extensions",
-    connected_providers: ["gemini", "anthropic"],
-    active_workstreams_count: 1,
-    total_labor_hours_saved: 42.5,
-  },
+  systemStatus: null,
   apiKeys: {
-    gemini: "••••••••••••••••",
-    anthropic: "••••••••••••••••",
+    gemini: "",
+    anthropic: "",
     openai: "",
     groq: "",
     xai: "",
   },
   connectedIntegrations: {
-    googleWorkspace: true,
+    googleWorkspace: false,
     microsoft365: false,
   },
 

@@ -97,6 +97,16 @@ impl WorkstreamDag {
         Ok(())
     }
 
+    pub fn update_task_status(&mut self, task_id: &str, status: TaskStatus) -> Result<(), DagError> {
+        let node = self.nodes.get_mut(task_id).ok_or_else(|| DagError::TaskNotFound(task_id.to_string()))?;
+        node.status = status;
+        Ok(())
+    }
+
+    pub fn get_task(&self, task_id: &str) -> Option<&TaskNode> {
+        self.nodes.get(task_id)
+    }
+
     /// Kahn's algorithm for topological sorting and cycle detection
     pub fn topological_sort(&self) -> Result<Vec<String>, DagError> {
         let mut in_degree: HashMap<String, usize> = HashMap::new();
@@ -110,7 +120,10 @@ impl WorkstreamDag {
         for (node_id, deps) in &self.dependencies {
             in_degree.insert(node_id.clone(), deps.len());
             for dep in deps {
-                dependents.entry(dep.clone()).or_default().push(node_id.clone());
+                dependents
+                    .entry(dep.clone())
+                    .or_default()
+                    .push(node_id.clone());
             }
         }
 

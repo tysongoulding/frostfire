@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use frostfire_core::synthesis::TeamPlan;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case")]
@@ -123,7 +123,6 @@ pub struct TestKeyResponse {
     #[serde(default)]
     pub models: Vec<String>,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]

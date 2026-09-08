@@ -1,11 +1,11 @@
+use chrono::Utc;
 use frostfire_core::blackboard::{
-    AgentIdentity, BlackboardError, BlackboardManifest,
-    DeterministicInvariantEngine, NamespaceEntry, NamespaceInvariants, WriteAclGuard,
+    AgentIdentity, BlackboardError, BlackboardManifest, DeterministicInvariantEngine,
+    NamespaceEntry, NamespaceInvariants, WriteAclGuard,
 };
 use frostfire_core::dag::{
     DumbCoordinatorNode, HybridSplitMergeDag, PromotionManifest, TaskNode, WorkstreamDag,
 };
-use chrono::Utc;
 
 #[test]
 fn test_write_acl_guard_isolation_and_freezing() {
@@ -17,14 +17,20 @@ fn test_write_acl_guard_isolation_and_freezing() {
 
     // Denied: caller writes to different namespace
     let err = WriteAclGuard::enforce_mutation(&sme_research, "sme_arch", false);
-    assert!(matches!(err, Err(BlackboardError::UnauthorizedMutation { .. })));
+    assert!(matches!(
+        err,
+        Err(BlackboardError::UnauthorizedMutation { .. })
+    ));
 
     // Admin override: admin can write to any namespace
     assert!(WriteAclGuard::enforce_mutation(&admin, "sme_arch", false).is_ok());
 
     // Frozen: cannot mutate frozen namespace unless admin
     let frozen_err = WriteAclGuard::enforce_mutation(&sme_research, "sme_research", true);
-    assert!(matches!(frozen_err, Err(BlackboardError::FrozenNamespace(_))));
+    assert!(matches!(
+        frozen_err,
+        Err(BlackboardError::FrozenNamespace(_))
+    ));
     assert!(WriteAclGuard::enforce_mutation(&admin, "sme_research", true).is_ok());
 }
 
@@ -117,7 +123,10 @@ assumes: ["aws_creds"]
 
     let manifest = DumbCoordinatorNode::parse_frontmatter_manifest(frontmatter).unwrap();
     assert_eq!(manifest.team_id, "team_infra");
-    assert_eq!(manifest.artifact_uri, "blackboard://ws-104/team_infra/sme_arch/topology@v1");
+    assert_eq!(
+        manifest.artifact_uri,
+        "blackboard://ws-104/team_infra/sme_arch/topology@v1"
+    );
     assert_eq!(manifest.status, "completed");
     assert_eq!(manifest.blob_hash, "abcdef123456");
     assert_eq!(manifest.invariants.produces, vec!["vpc_network", "subnets"]);
@@ -144,31 +153,35 @@ fn test_hybrid_split_merge_dag_convergence_barrier_and_synthesis() {
     assert!(hybrid_dag.merge_synthesis_gate().is_err());
 
     // Finalize Team 1
-    hybrid_dag.finalize_team_branch(
-        "team_infra",
-        PromotionManifest {
-            team_id: "team_infra".to_string(),
-            artifact_uri: "blackboard://ws-1/team_infra/sme_infra/vpc@v1".to_string(),
-            status: "completed".to_string(),
-            blob_hash: "hash_infra".to_string(),
-            invariants: NamespaceInvariants::default(),
-        },
-    ).unwrap();
+    hybrid_dag
+        .finalize_team_branch(
+            "team_infra",
+            PromotionManifest {
+                team_id: "team_infra".to_string(),
+                artifact_uri: "blackboard://ws-1/team_infra/sme_infra/vpc@v1".to_string(),
+                status: "completed".to_string(),
+                blob_hash: "hash_infra".to_string(),
+                invariants: NamespaceInvariants::default(),
+            },
+        )
+        .unwrap();
 
     // Still missing Team 2: barrier still blocks
     assert!(hybrid_dag.check_convergence_barrier().is_err());
 
     // Finalize Team 2
-    hybrid_dag.finalize_team_branch(
-        "team_appsec",
-        PromotionManifest {
-            team_id: "team_appsec".to_string(),
-            artifact_uri: "blackboard://ws-1/team_appsec/sme_sec/audit@v1".to_string(),
-            status: "completed".to_string(),
-            blob_hash: "hash_appsec".to_string(),
-            invariants: NamespaceInvariants::default(),
-        },
-    ).unwrap();
+    hybrid_dag
+        .finalize_team_branch(
+            "team_appsec",
+            PromotionManifest {
+                team_id: "team_appsec".to_string(),
+                artifact_uri: "blackboard://ws-1/team_appsec/sme_sec/audit@v1".to_string(),
+                status: "completed".to_string(),
+                blob_hash: "hash_appsec".to_string(),
+                invariants: NamespaceInvariants::default(),
+            },
+        )
+        .unwrap();
 
     // Now barrier passes and synthesis gate merges URI pointers
     assert!(hybrid_dag.check_convergence_barrier().is_ok());

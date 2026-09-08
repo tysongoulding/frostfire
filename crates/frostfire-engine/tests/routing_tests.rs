@@ -12,7 +12,11 @@ fn test_90_10_tier_routing() {
     };
     let parsing_route = router.route(&parsing_task);
     assert_eq!(parsing_route.tier, ModelTier::SmeFast);
-    assert!(parsing_route.model_name.contains("flash") || parsing_route.model_name.contains("groq") || parsing_route.model_name.contains("mini"));
+    assert!(
+        parsing_route.model_name.contains("flash")
+            || parsing_route.model_name.contains("groq")
+            || parsing_route.model_name.contains("mini")
+    );
 
     let drafting_task = TaskProfile {
         task_type: TaskType::Drafting,
@@ -30,7 +34,9 @@ fn test_90_10_tier_routing() {
     };
     let synthesis_route = router.route(&synthesis_task);
     assert_eq!(synthesis_route.tier, ModelTier::ReasoningLead);
-    assert!(synthesis_route.model_name.contains("pro") || synthesis_route.model_name.contains("sonnet"));
+    assert!(
+        synthesis_route.model_name.contains("pro") || synthesis_route.model_name.contains("sonnet")
+    );
 
     let conflict_task = TaskProfile {
         task_type: TaskType::ConflictResolution,
@@ -51,7 +57,10 @@ fn test_deterministic_failover_chains() {
         prompt_token_estimate: 800,
     };
     let fast_chain = router.failover_chain(&fast_task);
-    assert!(fast_chain.len() >= 3, "Fast tier must have at least 3 failover stages");
+    assert!(
+        fast_chain.len() >= 3,
+        "Fast tier must have at least 3 failover stages"
+    );
     assert_eq!(fast_chain[0].model_name, "gemini-2.0-flash");
     assert_eq!(fast_chain[1].model_name, "llama-3.3-70b-versatile");
     assert_eq!(fast_chain[2].model_name, "llama-3.2-3b");
@@ -62,7 +71,10 @@ fn test_deterministic_failover_chains() {
         prompt_token_estimate: 4000,
     };
     let lead_chain = router.failover_chain(&lead_task);
-    assert!(lead_chain.len() >= 3, "Reasoning tier must have failover options");
+    assert!(
+        lead_chain.len() >= 3,
+        "Reasoning tier must have failover options"
+    );
     assert_eq!(lead_chain[0].model_name, "gemini-1.5-pro");
     assert_eq!(lead_chain[1].model_name, "claude-3-7-sonnet");
     assert_eq!(lead_chain[2].model_name, "o3-mini");

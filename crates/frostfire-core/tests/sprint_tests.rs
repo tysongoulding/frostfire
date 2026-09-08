@@ -16,6 +16,10 @@ fn test_one_hour_sprint_phases() {
 
     // Verify all phases have assigned SMEs
     for phase in &sprint.phases {
-        assert!(!phase.assigned_smes.is_empty(), "Phase {:?} must have assigned SMEs", phase.phase);
+        assert!(
+            !phase.assigned_smes.is_empty(),
+            "Phase {:?} must have assigned SMEs",
+            phase.phase
+        );
     }
 }

@@ -49,6 +49,9 @@ interface ResponsiveShellProps {
   onDeleteItem?: (id: string) => void;
   userName?: string;
   description?: string;
+  displayNumber?: number;
+  vncPort?: number;
+  vmHost?: string;
   children: React.ReactNode;
 }
 
@@ -68,7 +71,10 @@ export const ResponsiveShell: React.FC<ResponsiveShellProps> = ({
   onRemoveTeamMember,
   missionObjective,
   description,
-  userName = 'User 1',
+  userName = 'Default User',
+  displayNumber,
+  vncPort,
+  vmHost,
   teamMemberCounts,
   onOpenMarketplace,
   onOpenSettings,
@@ -312,6 +318,9 @@ export const ResponsiveShell: React.FC<ResponsiveShellProps> = ({
                       missionObjective={missionObjective}
                       onOpenScreenModal={onOpenScreenModal}
                       activeTab={activeTab}
+                      displayNumber={displayNumber}
+                      vncPort={vncPort}
+                      vmHost={vmHost}
                     />
                   )}
                 </div>

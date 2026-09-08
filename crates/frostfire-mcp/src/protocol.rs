@@ -22,7 +22,11 @@ pub struct JsonRpcRequest {
 }
 
 impl JsonRpcRequest {
-    pub fn new(id: Option<serde_json::Value>, method: impl Into<String>, params: Option<serde_json::Value>) -> Self {
+    pub fn new(
+        id: Option<serde_json::Value>,
+        method: impl Into<String>,
+        params: Option<serde_json::Value>,
+    ) -> Self {
         Self {
             jsonrpc: "2.0".to_string(),
             id,
@@ -32,7 +36,11 @@ impl JsonRpcRequest {
     }
 
     /// Helper to construct a `tools/call` request.
-    pub fn tool_call(id: Option<serde_json::Value>, tool_name: &str, arguments: serde_json::Value) -> Self {
+    pub fn tool_call(
+        id: Option<serde_json::Value>,
+        tool_name: &str,
+        arguments: serde_json::Value,
+    ) -> Self {
         let params = serde_json::json!({
             "name": tool_name,
             "arguments": arguments

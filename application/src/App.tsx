@@ -6,195 +6,64 @@ import { SettingsModal } from './components/modals/SettingsModal';
 import { MarketplaceModal } from './components/modals/MarketplaceModal';
 import { ScreenView } from './components/views/ScreenView';
 import { CreateEntityModal, InitialEntityData } from './components/modals/CreateEntityModal';
-import { ActiveTab, SidebarSection, SidebarItem, AgentEntity, ChatMessage } from './types';
+import { ActiveTab, SidebarSection, SidebarItem, AgentEntity, ChatMessage, AgentSessionInfo } from './types';
 import { useSessionStore } from './store/sessionStore';
 import { useProviderStore } from './store/providerStore';
 import { useRhoEngine } from './hooks/useRhoEngine';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
-import { useUserStore, UserProfile, POC_USERS } from './store/userStore';
+import { useUserStore } from './store/userStore';
 import { DEFAULT_EC2_HOST } from './lib/vnc';
 
-const getUserAgents = (user: UserProfile): Record<string, AgentEntity> => {
-  const first = user.name ? user.name.split(' ')[0] : 'User';
-  const ports = user.agentPorts || { agent1: 6080, agent2: 6081, agent3: 6082 };
-  if (user.id === 'user2') {
-    return {
-      agent1: {
-        name: `${first}'s Agent 1`,
-        role: `Display :4 (Port ${ports.agent1}) · Ops & Workflow Lead`,
-        description: `Autonomous cloud agent on ${user.vmHost}:${ports.agent1} managing operational workflows and orchestration for ${user.name}.`,
-        notifications: true,
-      },
-      agent2: {
-        name: `${first}'s Agent 2`,
-        role: `Display :5 (Port ${ports.agent2}) · Automation & Pipeline`,
-        description: `Autonomous cloud agent on ${user.vmHost}:${ports.agent2} executing cloud automation scripts and deployments for ${user.name}.`,
-        notifications: true,
-      },
-      agent3: {
-        name: `${first}'s Agent 3`,
-        role: `Display :6 (Port ${ports.agent3}) · Performance & Health`,
-        description: `Autonomous cloud agent on ${user.vmHost}:${ports.agent3} tracking health metrics, uptime, and diagnostics for ${user.name}.`,
-        notifications: true,
-      },
-    };
-  }
-  if (user.id === 'user3') {
-    return {
-      agent1: {
-        name: `${first}'s Agent 1`,
-        role: `Display :7 (Port ${ports.agent1}) · Architecture & Review`,
-        description: `Autonomous cloud agent on ${user.vmHost}:${ports.agent1} reviewing repository architecture and dependencies for ${user.name}.`,
-        notifications: true,
-      },
-      agent2: {
-        name: `${first}'s Agent 2`,
-        role: `Display :8 (Port ${ports.agent2}) · Principal Dev & Compiler`,
-        description: `Autonomous cloud agent on ${user.vmHost}:${ports.agent2} compiling, refactoring, and debugging codebases for ${user.name}.`,
-        notifications: true,
-      },
-      agent3: {
-        name: `${first}'s Agent 3`,
-        role: `Display :9 (Port ${ports.agent3}) · Verification Matrix`,
-        description: `Autonomous cloud agent on ${user.vmHost}:${ports.agent3} running regression suites and closed-loop verification for ${user.name}.`,
-        notifications: true,
-      },
-    };
-  }
+function sessionToEntity(s: AgentSessionInfo): AgentEntity {
+  const sid = s.id || s.agent_id || 'agt_default';
   return {
-    agent1: {
-      name: `${first}'s Agent 1`,
-      role: `Display :1 (Port ${ports.agent1}) · Browser & Research`,
-      description: `Autonomous cloud agent on ${user.vmHost}:${ports.agent1} running sandboxed Chrome and web research for ${user.name}.`,
-      notifications: true,
-    },
-    agent2: {
-      name: `${first}'s Agent 2`,
-      role: `Display :2 (Port ${ports.agent2}) · Terminal & Dev`,
-      description: `Autonomous cloud agent on ${user.vmHost}:${ports.agent2} executing terminal commands and builds for ${user.name}.`,
-      notifications: true,
-    },
-    agent3: {
-      name: `${first}'s Agent 3`,
-      role: `Display :3 (Port ${ports.agent3}) · QA & System Testing`,
-      description: `Autonomous cloud agent on ${user.vmHost}:${ports.agent3} running test suites and closed-loop verification for ${user.name}.`,
-      notifications: true,
-    },
+    id: sid,
+    name: s.name || `Agent Slot ${s.display_number}`,
+    role: s.role || `Display :${s.display_number} (Port ${s.vnc_port})`,
+    description: s.description || `Cloud Agent on ${s.vm_host}:${s.vnc_port} (Status: ${s.status})`,
+    notifications: true,
+    displayNumber: s.display_number,
+    vncPort: s.vnc_port,
+    vmHost: s.vm_host,
+    status: s.status,
   };
-};
+}
 
-const getUserSidebarItems = (user: UserProfile): Record<string, SidebarItem> => {
-  const ag = getUserAgents(user);
-  const ports = user.agentPorts || { agent1: 6080, agent2: 6081, agent3: 6082 };
-  const d1 = user.id === 'user2' ? 4 : user.id === 'user3' ? 7 : 1;
-  const d2 = user.id === 'user2' ? 5 : user.id === 'user3' ? 8 : 2;
-  const d3 = user.id === 'user2' ? 6 : user.id === 'user3' ? 9 : 3;
+function sessionToSidebarItem(s: AgentSessionInfo): SidebarItem {
+  const sid = s.id || s.agent_id || 'agt_default';
   return {
-    agent1: {
-      id: 'agent1',
-      title: ag.agent1.name,
-      roleTag: `Display :${d1} (Port ${ports.agent1})`,
-      preview: `${user.vmHost} · ${ag.agent1.role}`,
-      timestamp: 'Just now',
-      accentClass: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
-      isTeam: false,
-      isStarred: false,
-      isPinned: false,
-      sectionId: 'agents',
-    },
-    agent2: {
-      id: 'agent2',
-      title: ag.agent2.name,
-      roleTag: `Display :${d2} (Port ${ports.agent2})`,
-      preview: `${user.vmHost} · ${ag.agent2.role}`,
-      timestamp: 'Just now',
-      accentClass: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
-      isTeam: false,
-      isStarred: false,
-      isPinned: false,
-      sectionId: 'agents',
-    },
-    agent3: {
-      id: 'agent3',
-      title: ag.agent3.name,
-      roleTag: `Display :${d3} (Port ${ports.agent3})`,
-      preview: `${user.vmHost} · ${ag.agent3.role}`,
-      timestamp: 'Just now',
-      accentClass: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
-      isTeam: false,
-      isStarred: false,
-      isPinned: false,
-      sectionId: 'agents',
-    },
+    id: sid,
+    title: s.name || `Agent Slot ${s.display_number}`,
+    roleTag: s.role || `Display :${s.display_number}`,
+    preview: `${s.vm_host}:${s.vnc_port} · ${s.status}`,
+    timestamp: 'Live',
+    accentClass: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
+    isTeam: false,
+    isStarred: false,
+    isPinned: false,
+    sectionId: 'agents',
   };
-};
-
-const INITIAL_AGENTS = getUserAgents(POC_USERS[0]);
+}
 
 const INITIAL_SECTIONS: SidebarSection[] = [
   { id: 'agents', title: 'Agents' },
 ];
 
-const INITIAL_SIDEBAR_ITEMS = getUserSidebarItems(POC_USERS[0]);
-
-const createInitialMessages = (user: UserProfile): Record<string, ChatMessage[]> => {
-  const first = user.name ? user.name.split(' ')[0] : 'User';
-  const ports = user.agentPorts || { agent1: 6080, agent2: 6081, agent3: 6082 };
-  const d1 = user.id === 'user2' ? 4 : user.id === 'user3' ? 7 : 1;
-  const d2 = user.id === 'user2' ? 5 : user.id === 'user3' ? 8 : 2;
-  const d3 = user.id === 'user2' ? 6 : user.id === 'user3' ? 9 : 3;
-  return {
-    agent1: [
-      {
-        id: 'init-agent1',
-        sender: 'ai',
-        text: `Hello ${first}! I am Agent 1 operating on Cloud Display :${d1} (Port ${ports.agent1} @ ${user.vmHost}).\nI can launch Google Chrome, navigate to websites, inspect elements, and run research workflows.`,
-        timestamp: 'Just now',
-        toolCalls: ['browser_cdp', 'desktop_gui'],
-      },
-    ],
-    agent2: [
-      {
-        id: 'init-agent2',
-        sender: 'ai',
-        text: `Hello ${first}! I am Agent 2 operating on Cloud Display :${d2} (Port ${ports.agent2} @ ${user.vmHost}).\nI can execute bash commands, manage git repositories, edit source files, and inspect terminals.`,
-        timestamp: 'Just now',
-        toolCalls: ['bash_exec', 'terminal_launch'],
-      },
-    ],
-    agent3: [
-      {
-        id: 'init-agent3',
-        sender: 'ai',
-        text: `Hello ${first}! I am Agent 3 operating on Cloud Display :${d3} (Port ${ports.agent3} @ ${user.vmHost}).\nI can run automated tests, linting, health checks, and verification suites.`,
-        timestamp: 'Just now',
-        toolCalls: ['qa_verify', 'system_monitor'],
-      },
-    ],
-  };
-};
-
-const INITIAL_MESSAGES = createInitialMessages(POC_USERS[0]);
-
 const MainApp: React.FC = () => {
-  const { activeUserId, getActiveUser, users } = useUserStore();
+  const { activeUserId, getActiveUser } = useUserStore();
   const currentUser = getActiveUser();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('chat');
-  const [agents, setAgents] = useState<Record<string, AgentEntity>>(INITIAL_AGENTS);
-  const [selectedAgentId, setSelectedAgentId] = useState<string>('agent1');
-  const [selectedThreadId, setSelectedThreadId] = useState<string>('agent1');
+  const [agents, setAgents] = useState<Record<string, AgentEntity>>({});
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('');
+  const [selectedThreadId, setSelectedThreadId] = useState<string>('');
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isMarketplaceOpen, setIsMarketplaceOpen] = useState<boolean>(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState<boolean>(true);
   const [rightPanelOpen, setRightPanelOpen] = useState<boolean>(true);
   const [sections, setSections] = useState<SidebarSection[]>(INITIAL_SECTIONS);
-  const [sidebarItems, setSidebarItems] = useState<Record<string, SidebarItem>>(INITIAL_SIDEBAR_ITEMS);
-  const [messagesByUser, setMessagesByUser] = useState<Record<string, Record<string, ChatMessage[]>>>({
-    user1: createInitialMessages(POC_USERS[0]),
-    user2: createInitialMessages(POC_USERS[1]),
-    user3: createInitialMessages(POC_USERS[2]),
-  });
+  const [sidebarItems, setSidebarItems] = useState<Record<string, SidebarItem>>({});
+  const [messagesByUser, setMessagesByUser] = useState<Record<string, Record<string, ChatMessage[]>>>({});
   const [isThinking, setIsThinking] = useState<boolean>(false);
 
   const [createModalState, setCreateModalState] = useState<{
@@ -214,20 +83,67 @@ const MainApp: React.FC = () => {
     data: null,
   });
 
-  const { addUserMessage } = useSessionStore();
-  const { prompt } = useRhoEngine();
+  const { addUserMessage: _addUserMessage } = useSessionStore();
+  const { prompt: _prompt } = useRhoEngine();
   const { syncKeysToBackend, loadKeysFromSharedAuthFile, loadCachedModelsFromBackend, fetchAllProviderModels } = useProviderStore();
 
   useGlobalShortcuts();
 
   useEffect(() => {
-    const user = getActiveUser();
-    const newAgents = getUserAgents(user);
-    const newItems = getUserSidebarItems(user);
-    setAgents(newAgents);
-    setSidebarItems(newItems);
-    setSelectedAgentId('agent1');
-  }, [activeUserId, users]);
+    let isMounted = true;
+    async function loadSessions() {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        let sessionsList = await invoke<AgentSessionInfo[]>('list_agent_sessions');
+        if (!sessionsList || sessionsList.length === 0) {
+          const seeded = await invoke<AgentSessionInfo>('create_agent_session', {
+            teamId: null,
+            preferredSlot: 1,
+          });
+          sessionsList = [seeded];
+        }
+        if (!isMounted) return;
+
+        const newAgents: Record<string, AgentEntity> = {};
+        const newItems: Record<string, SidebarItem> = {};
+        for (const s of sessionsList) {
+          const sid = s.id || s.agent_id || 'agt_default';
+          newAgents[sid] = sessionToEntity(s);
+          newItems[sid] = sessionToSidebarItem(s);
+        }
+        setAgents(newAgents);
+        setSidebarItems(newItems);
+        if (sessionsList.length > 0) {
+          const firstSid = sessionsList[0].id || sessionsList[0].agent_id || '';
+          setSelectedAgentId((prev) => (prev && newAgents[prev] ? prev : firstSid));
+        }
+      } catch (err) {
+        console.warn('Failed to load agent sessions:', err);
+        const fallbackId = 'agt_default_01';
+        const fallbackSession: AgentSessionInfo = {
+          id: fallbackId,
+          agent_id: fallbackId,
+          display_number: 1,
+          display_slot: 1,
+          vnc_port: 6080,
+          rfb_port: 5901,
+          cdp_port: 9223,
+          vm_host: currentUser?.vmHost || DEFAULT_EC2_HOST,
+          status: 'ready',
+          created_at: new Date().toISOString(),
+        };
+        const newAgents = { [fallbackId]: sessionToEntity(fallbackSession) };
+        const newItems = { [fallbackId]: sessionToSidebarItem(fallbackSession) };
+        setAgents(newAgents);
+        setSidebarItems(newItems);
+        setSelectedAgentId(fallbackId);
+      }
+    }
+    loadSessions();
+    return () => {
+      isMounted = false;
+    };
+  }, [activeUserId, currentUser?.vmHost]);
 
   useEffect(() => {
     import('./lib/settingsSync').then(({ loadSettingsFromDisk }) => {
@@ -552,20 +468,41 @@ const MainApp: React.FC = () => {
     });
   };
 
-  const handleCreateEntity = (
+  const handleCreateEntity = async (
     name: string,
     role: string,
     description?: string,
     notifications?: boolean,
     selectedAgentIds?: string[]
   ) => {
-    const newId = `custom-${Date.now()}`;
     const isNewTeam =
       createModalState.type === 'team' ||
       Boolean(selectedAgentIds && selectedAgentIds.length >= 2);
+
+    let createdId = `custom-${Date.now()}`;
+    let createdDisplay = 1;
+    let createdVncPort = 6080;
+    let createdVmHost = currentUser?.vmHost || DEFAULT_EC2_HOST;
+
+    if (!isNewTeam) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const session = await invoke<AgentSessionInfo>('create_agent_session', {
+          teamId: null,
+          preferredSlot: null,
+        });
+        createdId = session.id || session.agent_id || createdId;
+        createdDisplay = session.display_number;
+        createdVncPort = session.vnc_port;
+        createdVmHost = session.vm_host;
+      } catch (err) {
+        console.warn('Failed to create agent session via Tauri:', err);
+      }
+    }
+
     setAgents((prev) => ({
       ...prev,
-      [newId]: {
+      [createdId]: {
         name,
         role,
         description: isNewTeam ? undefined : description,
@@ -573,16 +510,19 @@ const MainApp: React.FC = () => {
         notifications,
         isTeam: isNewTeam,
         memberIds: isNewTeam ? selectedAgentIds || [] : undefined,
+        displayNumber: createdDisplay,
+        vncPort: createdVncPort,
+        vmHost: createdVmHost,
       },
     }));
 
     setSidebarItems((prev) => ({
       ...prev,
-      [newId]: {
-        id: newId,
+      [createdId]: {
+        id: createdId,
         title: name,
         roleTag: role,
-        preview: description || (isNewTeam ? 'Team ready for coordination.' : 'Agent ready.'),
+        preview: description || (isNewTeam ? 'Team ready for coordination.' : `Slot :${createdDisplay}`),
         timestamp: 'Just now',
         accentClass: isNewTeam
           ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20'
@@ -595,7 +535,7 @@ const MainApp: React.FC = () => {
       },
     }));
 
-    setSelectedAgentId(newId);
+    setSelectedAgentId(createdId);
     setActiveTab('chat');
   };
 
@@ -608,7 +548,7 @@ const MainApp: React.FC = () => {
     };
 
     setMessagesByUser((prev) => {
-      const userThreads = prev[activeUserId] || createInitialMessages(currentUser);
+      const userThreads = prev[activeUserId] || {};
       return {
         ...prev,
         [activeUserId]: {
@@ -620,10 +560,9 @@ const MainApp: React.FC = () => {
 
     setIsThinking(true);
 
-    const userOffset = activeUserId === 'user2' ? 3 : activeUserId === 'user3' ? 6 : 0;
-    const baseDisp = selectedAgentId === 'agent2' ? 2 : selectedAgentId === 'agent3' ? 3 : 1;
-    const displayNumber = userOffset + baseDisp;
-    const vmHost = currentUser.vmHost || DEFAULT_EC2_HOST;
+    const targetAgent = agents[selectedAgentId];
+    const displayNumber = targetAgent?.displayNumber ?? 1;
+    const vmHost = targetAgent?.vmHost || currentUser.vmHost || DEFAULT_EC2_HOST;
     const execPort = currentUser.execPort || 3000;
 
     try {
@@ -667,7 +606,7 @@ const MainApp: React.FC = () => {
       };
 
       setMessagesByUser((prev) => {
-        const userThreads = prev[activeUserId] || createInitialMessages(currentUser);
+        const userThreads = prev[activeUserId] || {};
         return {
           ...prev,
           [activeUserId]: {
@@ -684,7 +623,7 @@ const MainApp: React.FC = () => {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessagesByUser((prev) => {
-        const userThreads = prev[activeUserId] || createInitialMessages(currentUser);
+        const userThreads = prev[activeUserId] || {};
         return {
           ...prev,
           [activeUserId]: {
@@ -744,12 +683,18 @@ const MainApp: React.FC = () => {
         onCopyConversationId={handleCopyConversationId}
         onHideFromSidebar={handleHideFromSidebar}
         onDeleteItem={handleDeleteItem}
+        displayNumber={currentAgent.displayNumber}
+        vncPort={currentAgent.vncPort}
+        vmHost={currentAgent.vmHost}
       >
         {activeTab === 'screen' && !isTeam ? (
           <ScreenView
             agentId={selectedAgentId}
             agentName={currentAgent.name}
             agentRole={currentAgent.role}
+            displayNumber={currentAgent.displayNumber}
+            vncPort={currentAgent.vncPort}
+            vmHost={currentAgent.vmHost}
             userId={activeUserId}
             onSwitchToChat={() => setActiveTab('chat')}
             onSendCommand={handleSendMessage}
@@ -764,7 +709,6 @@ const MainApp: React.FC = () => {
             rightPanelOpen={rightPanelOpen}
             messages={
               (messagesByUser[activeUserId] || {})[selectedAgentId] ||
-              INITIAL_MESSAGES[selectedAgentId] ||
               []
             }
             isThinking={isThinking}

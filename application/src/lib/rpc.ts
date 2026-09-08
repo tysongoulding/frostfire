@@ -2,7 +2,7 @@ import { RpcCommand, RpcEvent, RpcMessage, RpcRequest, RpcResponse } from "./pro
 
 type EventListener = (event: RpcEvent) => void;
 
-export class RhoClient {
+export class FrostfireClient {
   private reqSeq = 0;
   private pending = new Map<string, (res: RpcResponse) => void>();
   private listeners = new Set<EventListener>();
@@ -15,8 +15,24 @@ export class RhoClient {
     // Check if running inside Tauri webview
     if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
       import("@tauri-apps/api/event").then(({ listen }) => {
+        // Listen to primary Frostfire event and legacy rho event
+        listen<RpcEvent>("frostfire://event", (event) => {
+          this.notifyListeners(event.payload);
+        });
         listen<RpcEvent>("rho://event", (event) => {
           this.notifyListeners(event.payload);
+        });
+        listen<any>("frostfire://agent-message", (event) => {
+          this.notifyListeners({
+            type: "agent_message",
+            ...event.payload,
+          } as any);
+        });
+        listen<any>("frostfire://approval-request", (event) => {
+          this.notifyListeners({
+            type: "approval_required",
+            ...event.payload,
+          } as any);
         });
       });
     }
@@ -59,15 +75,9 @@ export class RhoClient {
       return invoke<RpcResponse>("send_rpc_command", { request: payload });
     }
 
-    // Fallback: mock response in browser dev mode
-    return {
-      id,
-      type: "response",
-      command: cmd.type,
-      success: true,
-      data: null,
-      error: null,
-    };
+    throw new Error(
+      `Frostfire client requires Tauri runtime. Cannot execute command '${cmd.type}' without native transport.`
+    );
   }
 
   public prompt(message: string, model?: string, provider?: string, preamble?: string, webSearch?: boolean) {
@@ -98,4 +108,6 @@ export class RhoClient {
   }
 }
 
-export const rhoClient = new RhoClient();
+export const RhoClient = FrostfireClient;
+export const frostfireClient = new FrostfireClient();
+export const rhoClient = frostfireClient;

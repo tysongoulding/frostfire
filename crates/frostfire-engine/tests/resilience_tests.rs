@@ -1,5 +1,5 @@
-use std::time::Duration;
 use frostfire_engine::resilience::{CircuitBreaker, CircuitBreakerConfig, CircuitState};
+use std::time::Duration;
 
 #[tokio::test]
 async fn test_circuit_breaker_transitions() {
@@ -25,14 +25,20 @@ async fn test_circuit_breaker_transitions() {
     // 3rd failure -> trips to Open
     cb.record_failure().await;
     assert_eq!(cb.state().await, CircuitState::Open);
-    assert!(cb.can_execute().await.is_err(), "Open state must reject execution");
+    assert!(
+        cb.can_execute().await.is_err(),
+        "Open state must reject execution"
+    );
 
     // Wait for cooldown period to elapse
     tokio::time::sleep(Duration::from_millis(120)).await;
 
     // After cooldown, should allow a canary probe in HalfOpen
     assert_eq!(cb.state().await, CircuitState::HalfOpen);
-    assert!(cb.can_execute().await.is_ok(), "HalfOpen should allow canary execution");
+    assert!(
+        cb.can_execute().await.is_ok(),
+        "HalfOpen should allow canary execution"
+    );
 
     // Canary probe succeeds -> transitions back to Closed
     cb.record_success().await;
@@ -48,7 +54,17 @@ fn test_backoff_jitter_bounds() {
         let base_secs = 1u64 << attempt; // 1s, 2s, 4s, 8s
         let min_expected = Duration::from_secs(base_secs);
         let max_expected = Duration::from_millis(base_secs * 1000 + 1000); // base + up to 1000ms jitter
-        assert!(delay >= min_expected, "Delay {:?} should be >= {:?}", delay, min_expected);
-        assert!(delay <= max_expected, "Delay {:?} should be <= {:?}", delay, max_expected);
+        assert!(
+            delay >= min_expected,
+            "Delay {:?} should be >= {:?}",
+            delay,
+            min_expected
+        );
+        assert!(
+            delay <= max_expected,
+            "Delay {:?} should be <= {:?}",
+            delay,
+            max_expected
+        );
     }
 }

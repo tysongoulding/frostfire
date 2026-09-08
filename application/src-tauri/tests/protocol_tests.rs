@@ -55,7 +55,10 @@ fn test_window_config() {
     }"##;
     let win: tauri::utils::config::WindowConfig = serde_json::from_str(conf).unwrap();
     assert_eq!(win.theme, Some(tauri::Theme::Dark));
-    assert_eq!(win.background_color, Some(tauri::window::Color(13, 17, 23, 255)));
+    assert_eq!(
+        win.background_color,
+        Some(tauri::window::Color(13, 17, 23, 255))
+    );
 }
 
 #[test]
@@ -65,7 +68,10 @@ fn test_test_key_response_contract() {
         success: true,
         latency_ms: 120,
         message: "Google Gemini Verified (200)".to_string(),
-        models: vec!["gemini-2.5-flash".to_string(), "gemini-2.0-flash".to_string()],
+        models: vec![
+            "gemini-2.5-flash".to_string(),
+            "gemini-2.0-flash".to_string(),
+        ],
     };
     let json = serde_json::to_string(&res).unwrap();
     assert!(json.contains("success"));
@@ -74,7 +80,6 @@ fn test_test_key_response_contract() {
     assert!(json.contains("models"));
     assert!(json.contains("gemini-2.5-flash"));
 }
-
 
 #[test]
 fn test_rpc_event_contract() {
@@ -99,13 +104,23 @@ async fn test_oauth_port_range_binding() {
 
 #[tokio::test]
 async fn test_models_cache_read_write() {
-    let temp_dir = std::env::temp_dir().join(format!("frostfire_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    let temp_dir = std::env::temp_dir().join(format!(
+        "frostfire_test_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
     let _ = tokio::fs::create_dir_all(&temp_dir).await;
 
-    let models = vec!["gemini-2.5-flash".to_string(), "gemini-3.1-pro-preview".to_string()];
+    let models = vec![
+        "gemini-2.5-flash".to_string(),
+        "gemini-3.1-pro-preview".to_string(),
+    ];
     frostfire_os_lib::commands::save_provider_models_to_cache(&temp_dir, "gemini", &models).await;
 
-    let cached = frostfire_os_lib::commands::read_provider_models_from_cache(&temp_dir, "gemini").await;
+    let cached =
+        frostfire_os_lib::commands::read_provider_models_from_cache(&temp_dir, "gemini").await;
     assert!(cached.is_some());
     let cached_models = cached.unwrap();
     assert_eq!(cached_models.len(), 2);
@@ -120,8 +135,8 @@ async fn test_models_cache_read_write() {
 
 #[test]
 fn test_web_search_protocol_and_intent() {
-    use frostfire_os_lib::protocol::{SearchResult, WorkstreamCommand};
     use frostfire_os_lib::commands::is_search_intent;
+    use frostfire_os_lib::protocol::{SearchResult, WorkstreamCommand};
 
     // Test SearchResult serialization
     let res = SearchResult {
@@ -144,10 +159,10 @@ fn test_web_search_protocol_and_intent() {
     // Test search intent detection
     assert!(is_search_intent("/search rust lang"));
     assert!(is_search_intent("/browser nextjs"));
-    assert!(is_search_intent("please search the internet for playwright"));
+    assert!(is_search_intent(
+        "please search the internet for playwright"
+    ));
     assert!(is_search_intent("Search the web for react 19"));
     assert!(is_search_intent("search for kubernetes"));
     assert!(!is_search_intent("write a rust function to parse json"));
 }
-
-

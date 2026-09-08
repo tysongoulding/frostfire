@@ -52,104 +52,6 @@ export interface ChatMessageItem {
   isMention: boolean;
 }
 
-const DEFAULT_EVENTS: CalendarEvent[] = [
-  {
-    id: "evt-1",
-    source: "google",
-    title: "Engineering Architecture & Rust Engine Sync",
-    startTime: "09:30 AM",
-    endTime: "10:15 AM",
-    meetingLink: "https://meet.google.com/abc-defg-hij",
-    attendeesCount: 4,
-    category: "work",
-  },
-  {
-    id: "evt-2",
-    source: "microsoft",
-    title: "Lota Studio UI/UX & Red-Green Verification Review",
-    startTime: "11:00 AM",
-    endTime: "11:45 AM",
-    meetingLink: "https://teams.microsoft.com/l/meetup-join/xyz",
-    attendeesCount: 3,
-    category: "review",
-  },
-  {
-    id: "evt-3",
-    source: "google",
-    title: "Weekly Release Sprint Retrospective",
-    startTime: "02:00 PM",
-    endTime: "02:30 PM",
-    attendeesCount: 6,
-    category: "standup",
-  },
-];
-
-const DEFAULT_EMAILS: EmailItem[] = [
-  {
-    id: "mail-1",
-    source: "outlook",
-    sender: "Sara Lindqvist",
-    senderEmail: "sara@ember.team",
-    subject: "PR #12: Claude plugin schema sync & verification ready",
-    preview: "Hey Tyson, the latest plugin changes have passed all unit tests and are ready for your review...",
-    receivedAt: "8:15 AM",
-    urgency: "high",
-    isUnread: true,
-  },
-  {
-    id: "mail-2",
-    source: "gmail",
-    sender: "Google Cloud Billing",
-    senderEmail: "no-reply@cloud.google.com",
-    subject: "Monthly Gemini API usage forecast within normal threshold",
-    preview: "Your Gemini Pro and Flash model usage for this billing cycle is currently at 14% of budget...",
-    receivedAt: "7:45 AM",
-    urgency: "medium",
-    isUnread: true,
-  },
-  {
-    id: "mail-3",
-    source: "gmail",
-    sender: "GitHub Notifications",
-    senderEmail: "notifications@github.com",
-    subject: "[rho-lota] New pull request: Tauri 2.0 window protocol",
-    preview: "Branch feature/wire-up has passed all automated Playwright test suites (6/6 passing)...",
-    receivedAt: "6:30 AM",
-    urgency: "low",
-    isUnread: false,
-  },
-];
-
-const DEFAULT_CHATS: ChatMessageItem[] = [
-  {
-    id: "chat-1",
-    source: "slack",
-    channel: "#engineering-core",
-    sender: "Alex Dev",
-    message: "@tyson Can you verify the latest Tokio SSE stream pump before we deploy to production?",
-    timestamp: "8:42 AM",
-    isMention: true,
-  },
-  {
-    id: "chat-2",
-    source: "teams",
-    channel: "Product Delivery",
-    sender: "Jordan Product",
-    message: "Morning team! Sprint 14 goals and story maps have been updated in the backlog.",
-    timestamp: "8:10 AM",
-    isMention: false,
-  },
-  {
-    id: "chat-3",
-    source: "google-chat",
-    channel: "Infra & DevOps",
-    sender: "Chris SRE",
-    message: "Nightly CI/CD pipelines completed with 100% green test assertions across all crates.",
-    timestamp: "7:15 AM",
-    isMention: false,
-  },
-];
-
 export interface MorningReportWidgetProps {
   isWorkbench?: boolean;
   onDismiss?: () => void;
@@ -160,9 +62,9 @@ export function MorningReportWidget({ isWorkbench, onDismiss, defaultOpen = true
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [activeTab, setActiveTab] = useState<"overview" | "schedule" | "inbox" | "chat">("overview");
 
-  const [events] = useState<CalendarEvent[]>(DEFAULT_EVENTS);
-  const [emails] = useState<EmailItem[]>(DEFAULT_EMAILS);
-  const [chats] = useState<ChatMessageItem[]>(DEFAULT_CHATS);
+  const [events] = useState<CalendarEvent[]>([]);
+  const [emails] = useState<EmailItem[]>([]);
+  const [chats] = useState<ChatMessageItem[]>([]);
 
   const { addUserMessage } = useSessionStore();
   const { setActiveView, setActiveCustomiseTab } = useUiStore();
@@ -324,7 +226,11 @@ export function MorningReportWidget({ isWorkbench, onDismiss, defaultOpen = true
                     <span className="text-[10px] text-blue-400 font-medium">{events.length} Events</span>
                   </div>
                   <p className="text-[11px] text-[#8b949e]">
-                    Next: <strong className="text-white">{events[0]?.title || "None"}</strong> at {events[0]?.startTime}
+                    {events.length > 0 ? (
+                      <>Next: <strong className="text-white">{events[0].title}</strong> at {events[0].startTime}</>
+                    ) : (
+                      "No upcoming events scheduled."
+                    )}
                   </p>
                 </div>
 
@@ -341,7 +247,11 @@ export function MorningReportWidget({ isWorkbench, onDismiss, defaultOpen = true
                     <span className="text-[10px] text-amber-400 font-medium">{unreadCount} Unread</span>
                   </div>
                   <p className="text-[11px] text-[#8b949e] truncate">
-                    From: <strong className="text-white">{emails[0]?.sender || "None"}</strong> – {emails[0]?.subject}
+                    {emails.length > 0 ? (
+                      <>From: <strong className="text-white">{emails[0].sender}</strong> – {emails[0].subject}</>
+                    ) : (
+                      "Inbox is clear."
+                    )}
                   </p>
                 </div>
 
@@ -358,7 +268,11 @@ export function MorningReportWidget({ isWorkbench, onDismiss, defaultOpen = true
                     <span className="text-[10px] text-purple-400 font-medium">{mentionsCount} Mentions</span>
                   </div>
                   <p className="text-[11px] text-[#8b949e] truncate">
-                    {chats[0]?.sender}: <strong className="text-white">{chats[0]?.channel}</strong>
+                    {chats.length > 0 ? (
+                      <>{chats[0].sender}: <strong className="text-white">{chats[0].channel}</strong></>
+                    ) : (
+                      "No unread mentions."
+                    )}
                   </p>
                 </div>
               </div>
@@ -401,43 +315,49 @@ export function MorningReportWidget({ isWorkbench, onDismiss, defaultOpen = true
                 </button>
               </div>
 
-              <div className="space-y-2">
-                {events.map((evt) => (
-                  <div
-                    key={evt.id}
-                    className="p-3 bg-[#121214] border border-[#2e2e34] rounded-xl hover:border-[#3f3f46] transition flex items-center justify-between"
-                  >
-                    <div className="space-y-1 truncate mr-2">
-                      <div className="flex items-center space-x-2">
-                        {getSourceBadge(evt.source)}
-                        <span className="text-xs font-semibold text-white truncate">{evt.title}</span>
-                      </div>
-                      <div className="flex items-center space-x-2 text-[10px] text-[#8b949e]">
-                        <span className="flex items-center space-x-1 text-blue-400 font-mono">
-                          <Clock className="w-3 h-3" />
-                          <span>
-                            {evt.startTime} – {evt.endTime}
+              {events.length === 0 ? (
+                <div className="py-8 px-4 border border-dashed border-[#2e2e34] rounded-xl text-center text-[#8b949e] text-xs">
+                  No upcoming meetings or events scheduled.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {events.map((evt) => (
+                    <div
+                      key={evt.id}
+                      className="p-3 bg-[#121214] border border-[#2e2e34] rounded-xl hover:border-[#3f3f46] transition flex items-center justify-between"
+                    >
+                      <div className="space-y-1 truncate mr-2">
+                        <div className="flex items-center space-x-2">
+                          {getSourceBadge(evt.source)}
+                          <span className="text-xs font-semibold text-white truncate">{evt.title}</span>
+                        </div>
+                        <div className="flex items-center space-x-2 text-[10px] text-[#8b949e]">
+                          <span className="flex items-center space-x-1 text-blue-400 font-mono">
+                            <Clock className="w-3 h-3" />
+                            <span>
+                              {evt.startTime} – {evt.endTime}
+                            </span>
                           </span>
-                        </span>
-                        <span>•</span>
-                        <span>{evt.attendeesCount} attendees</span>
+                          <span>•</span>
+                          <span>{evt.attendeesCount} attendees</span>
+                        </div>
                       </div>
-                    </div>
 
-                    {evt.meetingLink && (
-                      <a
-                        href={evt.meetingLink}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-xs font-medium transition flex-shrink-0"
-                      >
-                        <Video className="w-3.5 h-3.5" />
-                        <span>Join Call</span>
-                      </a>
-                    )}
-                  </div>
-                ))}
-              </div>
+                      {evt.meetingLink && (
+                        <a
+                          href={evt.meetingLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-xs font-medium transition flex-shrink-0"
+                        >
+                          <Video className="w-3.5 h-3.5" />
+                          <span>Join Call</span>
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -457,29 +377,35 @@ export function MorningReportWidget({ isWorkbench, onDismiss, defaultOpen = true
                 </button>
               </div>
 
-              <div className="space-y-2">
-                {emails.map((mail) => (
-                  <div
-                    key={mail.id}
-                    className={`p-3 bg-[#121214] border rounded-xl hover:border-[#3f3f46] transition space-y-1.5 ${
-                      mail.isUnread ? "border-amber-500/40 bg-amber-950/10" : "border-[#2e2e34]"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2 truncate">
-                        {getSourceBadge(mail.source)}
-                        {mail.isUnread && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />}
-                        <span className="font-semibold text-white text-xs truncate">{mail.sender}</span>
+              {emails.length === 0 ? (
+                <div className="py-8 px-4 border border-dashed border-[#2e2e34] rounded-xl text-center text-[#8b949e] text-xs">
+                  No unread or priority emails.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {emails.map((mail) => (
+                    <div
+                      key={mail.id}
+                      className={`p-3 bg-[#121214] border rounded-xl hover:border-[#3f3f46] transition space-y-1.5 ${
+                        mail.isUnread ? "border-amber-500/40 bg-amber-950/10" : "border-[#2e2e34]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2 truncate">
+                          {getSourceBadge(mail.source)}
+                          {mail.isUnread && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />}
+                          <span className="font-semibold text-white text-xs truncate">{mail.sender}</span>
+                        </div>
+                        <span className="text-[10px] text-[#8b949e] flex-shrink-0 font-mono">{mail.receivedAt}</span>
                       </div>
-                      <span className="text-[10px] text-[#8b949e] flex-shrink-0 font-mono">{mail.receivedAt}</span>
+
+                      <div className="text-xs font-medium text-[#c9d1d9] truncate">{mail.subject}</div>
+
+                      <p className="text-[11px] text-[#8b949e] line-clamp-1">{mail.preview}</p>
                     </div>
-
-                    <div className="text-xs font-medium text-[#c9d1d9] truncate">{mail.subject}</div>
-
-                    <p className="text-[11px] text-[#8b949e] line-clamp-1">{mail.preview}</p>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -499,37 +425,43 @@ export function MorningReportWidget({ isWorkbench, onDismiss, defaultOpen = true
                 </button>
               </div>
 
-              <div className="space-y-2">
-                {chats.map((chat) => (
-                  <div
-                    key={chat.id}
-                    className={`p-3 bg-[#121214] border rounded-xl hover:border-[#3f3f46] transition space-y-1.5 ${
-                      chat.isMention ? "border-purple-500/40 bg-purple-950/10" : "border-[#2e2e34]"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2 truncate">
-                        {getSourceBadge(chat.source)}
-                        <span className="flex items-center space-x-1 text-xs font-semibold text-white truncate">
-                          <Hash className="w-3 h-3 text-[#8b949e]" />
-                          <span>{chat.channel}</span>
-                        </span>
-                        {chat.isMention && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/30">
-                            @Mention
+              {chats.length === 0 ? (
+                <div className="py-8 px-4 border border-dashed border-[#2e2e34] rounded-xl text-center text-[#8b949e] text-xs">
+                  No active channel discussions or mentions.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {chats.map((chat) => (
+                    <div
+                      key={chat.id}
+                      className={`p-3 bg-[#121214] border rounded-xl hover:border-[#3f3f46] transition space-y-1.5 ${
+                        chat.isMention ? "border-purple-500/40 bg-purple-950/10" : "border-[#2e2e34]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2 truncate">
+                          {getSourceBadge(chat.source)}
+                          <span className="flex items-center space-x-1 text-xs font-semibold text-white truncate">
+                            <Hash className="w-3 h-3 text-[#8b949e]" />
+                            <span>{chat.channel}</span>
                           </span>
-                        )}
+                          {chat.isMention && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/30">
+                              @Mention
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-[#8b949e] font-mono">{chat.timestamp}</span>
                       </div>
-                      <span className="text-[10px] text-[#8b949e] font-mono">{chat.timestamp}</span>
-                    </div>
 
-                    <div className="text-[11px] text-[#c9d1d9]">
-                      <span className="font-semibold text-white mr-1.5">{chat.sender}:</span>
-                      <span>{chat.message}</span>
+                      <div className="text-[11px] text-[#c9d1d9]">
+                        <span className="font-semibold text-white mr-1.5">{chat.sender}:</span>
+                        <span>{chat.message}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

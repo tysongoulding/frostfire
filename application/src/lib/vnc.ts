@@ -5,6 +5,12 @@ export interface VncOptions {
   host?: string;
   port?: number;
   token?: string;
+  protocol?: 'http' | 'https';
+  ssl?: boolean;
+}
+
+export function getVncPort(displayNumber: number): number {
+  return 6079 + displayNumber;
 }
 
 export function getVncUrl(
@@ -15,6 +21,7 @@ export function getVncUrl(
   let scale: 'fixed' | 'fit' = 'fixed';
   let customPort: number | undefined;
   let customToken: string | undefined;
+  let protocol: 'http' | 'https' = 'http';
 
   if (typeof optionsOrHost === 'string') {
     host = optionsOrHost;
@@ -23,25 +30,25 @@ export function getVncUrl(
     if (optionsOrHost.scale) scale = optionsOrHost.scale;
     if (optionsOrHost.port) customPort = optionsOrHost.port;
     if (optionsOrHost.token !== undefined) customToken = optionsOrHost.token;
+    if (optionsOrHost.protocol) protocol = optionsOrHost.protocol;
+    else if (optionsOrHost.ssl) protocol = 'https';
   }
 
-  const defaultPortMap: Record<number, number> = {
-    1: 6080,
-    2: 6081,
-    3: 6082,
-    4: 6083,
-    5: 6084,
-    6: 6085,
-    7: 6086,
-    8: 6087,
-    9: 6088,
-  };
+  const port = customPort ?? getVncPort(displayNumber);
+  const tokenQuery = customToken ? `token=${encodeURIComponent(customToken)}&` : '';
 
-  const port = customPort ?? defaultPortMap[displayNumber] ?? (displayNumber === 1 ? 6080 : 6081);
-  const token = customToken !== undefined
-    ? customToken
-    : (!customPort && (displayNumber === 2 || displayNumber === 3) ? `user${displayNumber}` : '');
-  const tokenQuery = token ? `token=${token}&` : '';
+  return `${protocol}://${host}:${port}/desktop.html?${tokenQuery}scale=${scale}`;
+}
 
-  return `http://${host}:${port}/desktop.html?${tokenQuery}scale=${scale}`;
+export function getVncWebSocketUrl(
+  displayNumber: number,
+  host: string = DEFAULT_EC2_HOST,
+  customPort?: number,
+  token?: string,
+  secure: boolean = false
+): string {
+  const port = customPort ?? getVncPort(displayNumber);
+  const proto = secure ? 'wss' : 'ws';
+  const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+  return `${proto}://${host}:${port}/websockify${tokenQuery}`;
 }

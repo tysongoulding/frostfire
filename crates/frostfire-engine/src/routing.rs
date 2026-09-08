@@ -79,7 +79,7 @@ impl ModelRouter {
             profile.task_type,
             TaskType::PlanSynthesis | TaskType::ConflictResolution | TaskType::DecisionGate
         ) || profile.role.to_lowercase().contains("lead")
-          || profile.role.to_lowercase().contains("pm");
+            || profile.role.to_lowercase().contains("pm");
 
         if is_reasoning {
             ModelRoute {

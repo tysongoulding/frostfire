@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -218,7 +218,9 @@ mod tests {
         assert!(!is_script_update_allowed("start-sand-box"));
         assert!(!is_script_update_allowed("box-cgroups.sh"));
         assert!(!is_script_update_allowed("box-xvfb"));
-        assert!(!is_script_update_allowed("/usr/local/bin/sand-supervisor.mjs"));
+        assert!(!is_script_update_allowed(
+            "/usr/local/bin/sand-supervisor.mjs"
+        ));
 
         assert!(is_script_update_allowed("custom-tool.sh"));
         assert!(is_script_update_allowed("user-script.py"));

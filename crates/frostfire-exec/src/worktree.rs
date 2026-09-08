@@ -175,7 +175,12 @@ impl WorktreeManager {
         if path.exists() {
             let _ = Command::new("git")
                 .current_dir(&self.repo_root)
-                .args(["worktree", "remove", "--force", path.to_str().unwrap_or_default()])
+                .args([
+                    "worktree",
+                    "remove",
+                    "--force",
+                    path.to_str().unwrap_or_default(),
+                ])
                 .output();
         }
 
@@ -285,7 +290,10 @@ impl WorktreeManager {
         if !store_path.exists() {
             return Err(WorktreeError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("Backing store path does not exist: {}", store_path.display()),
+                format!(
+                    "Backing store path does not exist: {}",
+                    store_path.display()
+                ),
             )));
         }
 
@@ -337,7 +345,8 @@ mod tests {
 
     #[test]
     fn test_worktree_lifecycle_with_git() {
-        let temp_dir = std::env::temp_dir().join(format!("frostfire_wt_test_{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("frostfire_wt_test_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&temp_dir).unwrap();
 
         // Initialize git repo
@@ -402,7 +411,8 @@ mod tests {
 
     #[test]
     fn test_verify_mount_backing() {
-        let temp_dir = std::env::temp_dir().join(format!("frostfire_wt_mount_test_{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("frostfire_wt_mount_test_{}", uuid::Uuid::new_v4()));
         let git_dir = temp_dir.join(".git");
         std::fs::create_dir_all(&git_dir).unwrap();
 

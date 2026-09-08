@@ -60,7 +60,10 @@ impl OAuthLoopback {
     }
 
     /// Attempts to bind to an available port in the given inclusive range (e.g. 8989..=8995)
-    pub async fn bind_in_range(start_port: u16, end_port: u16) -> Result<(Self, TcpListener, u16), OAuthError> {
+    pub async fn bind_in_range(
+        start_port: u16,
+        end_port: u16,
+    ) -> Result<(Self, TcpListener, u16), OAuthError> {
         for port in start_port..=end_port {
             let addr_str = format!("127.0.0.1:{}", port);
             if let Ok(addr) = addr_str.parse::<SocketAddr>() {
@@ -71,7 +74,10 @@ impl OAuthLoopback {
         }
         Err(OAuthError::BindError(std::io::Error::new(
             std::io::ErrorKind::AddrInUse,
-            format!("All ports in range {}-{} are occupied", start_port, end_port),
+            format!(
+                "All ports in range {}-{} are occupied",
+                start_port, end_port
+            ),
         )))
     }
 
@@ -107,7 +113,9 @@ impl OAuthLoopback {
                                 })
                                 .collect();
 
-                            if let (Some(code), Some(state)) = (params.get("code"), params.get("state")) {
+                            if let (Some(code), Some(state)) =
+                                (params.get("code"), params.get("state"))
+                            {
                                 if state == &state_to_match {
                                     let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<html><body style='font-family:system-ui;background:#0d1117;color:#c9d1d9;text-align:center;padding:40px;'><h2 style='color:#58a6ff;'>FrostfireOS Authorization Successful!</h2><p>You can close this tab and return to FrostfireOS.</p><script>window.close();</script></body></html>";
                                     let _ = stream.write_all(response.as_bytes()).await;
@@ -123,7 +131,9 @@ impl OAuthLoopback {
                 }
                 let response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html\r\n\r\n<html><body><h2>Authorization Failed</h2></body></html>";
                 let _ = stream.write_all(response.as_bytes()).await;
-                let _ = tx.send(Err(OAuthError::InvalidCallback("Missing code or state".into())));
+                let _ = tx.send(Err(OAuthError::InvalidCallback(
+                    "Missing code or state".into(),
+                )));
             }
         });
 
@@ -148,7 +158,8 @@ impl OAuthLoopback {
     }
 }
 
-pub const DEFAULT_GOOGLE_CLIENT_ID: &str = "1057421839841-frostfireos-desktop-local.apps.googleusercontent.com";
+pub const DEFAULT_GOOGLE_CLIENT_ID: &str =
+    "1057421839841-frostfireos-desktop-local.apps.googleusercontent.com";
 pub const DEFAULT_OPENAI_CLIENT_ID: &str = "frostfireos-desktop-pkce";
 pub const DEFAULT_ATLASSIAN_CLIENT_ID: &str = "frostfireos-desktop-atlassian";
 
@@ -192,7 +203,10 @@ pub fn build_auth_url(
                 client_id, scope, redirect_uri, session.state
             ))
         }
-        _ => Err(OAuthError::AuthFailed(format!("OAuth not supported for {}", provider))),
+        _ => Err(OAuthError::AuthFailed(format!(
+            "OAuth not supported for {}",
+            provider
+        ))),
     }
 }
 
@@ -229,14 +243,20 @@ pub async fn exchange_code_for_token(
                 .map_err(|e| OAuthError::AuthFailed(e.to_string()))?;
 
             if resp.status().is_success() {
-                let data: serde_json::Value = resp.json().await.map_err(|e| OAuthError::AuthFailed(e.to_string()))?;
+                let data: serde_json::Value = resp
+                    .json()
+                    .await
+                    .map_err(|e| OAuthError::AuthFailed(e.to_string()))?;
                 let token = data["access_token"]
                     .as_str()
                     .ok_or_else(|| OAuthError::AuthFailed("No access_token in response".into()))?;
                 Ok(token.to_string())
             } else {
                 let body = resp.text().await.unwrap_or_default();
-                Err(OAuthError::AuthFailed(format!("Google token exchange failed: {}", body)))
+                Err(OAuthError::AuthFailed(format!(
+                    "Google token exchange failed: {}",
+                    body
+                )))
             }
         }
         "openai" => {
@@ -257,14 +277,20 @@ pub async fn exchange_code_for_token(
                 .map_err(|e| OAuthError::AuthFailed(e.to_string()))?;
 
             if resp.status().is_success() {
-                let data: serde_json::Value = resp.json().await.map_err(|e| OAuthError::AuthFailed(e.to_string()))?;
+                let data: serde_json::Value = resp
+                    .json()
+                    .await
+                    .map_err(|e| OAuthError::AuthFailed(e.to_string()))?;
                 let token = data["access_token"]
                     .as_str()
                     .ok_or_else(|| OAuthError::AuthFailed("No access_token in response".into()))?;
                 Ok(token.to_string())
             } else {
                 let body = resp.text().await.unwrap_or_default();
-                Err(OAuthError::AuthFailed(format!("OpenAI token exchange failed: {}", body)))
+                Err(OAuthError::AuthFailed(format!(
+                    "OpenAI token exchange failed: {}",
+                    body
+                )))
             }
         }
         "atlassian" => {
@@ -285,17 +311,25 @@ pub async fn exchange_code_for_token(
                 .map_err(|e| OAuthError::AuthFailed(e.to_string()))?;
 
             if resp.status().is_success() {
-                let data: serde_json::Value = resp.json().await.map_err(|e| OAuthError::AuthFailed(e.to_string()))?;
+                let data: serde_json::Value = resp
+                    .json()
+                    .await
+                    .map_err(|e| OAuthError::AuthFailed(e.to_string()))?;
                 let token = data["access_token"]
                     .as_str()
                     .ok_or_else(|| OAuthError::AuthFailed("No access_token in response".into()))?;
                 Ok(token.to_string())
             } else {
                 let body = resp.text().await.unwrap_or_default();
-                Err(OAuthError::AuthFailed(format!("Atlassian token exchange failed: {}", body)))
+                Err(OAuthError::AuthFailed(format!(
+                    "Atlassian token exchange failed: {}",
+                    body
+                )))
             }
         }
-        _ => Err(OAuthError::AuthFailed(format!("OAuth exchange not supported for {}", provider))),
+        _ => Err(OAuthError::AuthFailed(format!(
+            "OAuth exchange not supported for {}",
+            provider
+        ))),
     }
 }
-

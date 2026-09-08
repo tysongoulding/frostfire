@@ -93,7 +93,10 @@ impl GeminiClient {
 
         // Check ~/.config/frostfire/gemini.key
         if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
-            let path = std::path::Path::new(&home).join(".config").join("frostfire").join("gemini.key");
+            let path = std::path::Path::new(&home)
+                .join(".config")
+                .join("frostfire")
+                .join("gemini.key");
             if let Ok(content) = std::fs::read_to_string(&path) {
                 let clean = content.trim().replace(['\r', '\n'], "");
                 if !clean.is_empty() {
@@ -116,7 +119,8 @@ impl GeminiClient {
 
     /// Create client from `GEMINI_API_KEY` or persistent key file, falling back to Dev Mock if absent.
     pub fn from_env() -> Self {
-        let model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3.8-flash".to_string());
+        let model =
+            std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3.8-flash".to_string());
         match Self::resolve_api_key() {
             Some(key) => {
                 info!("GeminiClient: using resolved API key (model: {})", model);
@@ -165,7 +169,11 @@ impl GeminiClient {
 
         let mut contents = Vec::new();
         for msg in history {
-            let role = if msg.role == "assistant" { "model" } else { &msg.role };
+            let role = if msg.role == "assistant" {
+                "model"
+            } else {
+                &msg.role
+            };
             contents.push(json!({
                 "role": role,
                 "parts": [{ "text": msg.text }]
@@ -234,12 +242,7 @@ impl GeminiClient {
 
         debug!(url = %url, "Sending generateContent request to Gemini API");
 
-        let res = self
-            .http_client
-            .post(&url)
-            .json(&body)
-            .send()
-            .await?;
+        let res = self.http_client.post(&url).json(&body).send().await?;
 
         if !res.status().is_success() {
             let status = res.status();
@@ -256,9 +259,13 @@ impl GeminiClient {
     fn generate_dev_mock_turn(&self, prompt: &str) -> Result<GeminiTurnResult, anyhow::Error> {
         let p_lower = prompt.to_lowercase();
         let mut tool_calls = Vec::new();
-        let content = if p_lower.contains("list") || p_lower.contains("file") || p_lower.contains("dir") {
+        let content = if p_lower.contains("list")
+            || p_lower.contains("file")
+            || p_lower.contains("dir")
+        {
             #[cfg(windows)]
-            let (cmd, args): (&str, Vec<String>) = ("cmd.exe", vec!["/c".to_string(), "dir".to_string()]);
+            let (cmd, args): (&str, Vec<String>) =
+                ("cmd.exe", vec!["/c".to_string(), "dir".to_string()]);
             #[cfg(not(windows))]
             let (cmd, args): (&str, Vec<String>) = ("ls", vec!["-la".to_string()]);
 
@@ -269,7 +276,10 @@ impl GeminiClient {
                     "args": args
                 }),
             });
-            format!("Frostfire Dev Mock: Executing workspace listing for prompt: '{}'", prompt)
+            format!(
+                "Frostfire Dev Mock: Executing workspace listing for prompt: '{}'",
+                prompt
+            )
         } else if p_lower.contains("patch") || p_lower.contains("edit") {
             tool_calls.push(GeminiToolCall {
                 name: "apply_patch".into(),
@@ -279,7 +289,12 @@ impl GeminiClient {
                 }),
             });
             "Frostfire Dev Mock: Applying mock patch.".into()
-        } else if p_lower.contains("browse") || p_lower.contains("web") || p_lower.contains("chrome") || p_lower.contains("http") || p_lower.contains("google") {
+        } else if p_lower.contains("browse")
+            || p_lower.contains("web")
+            || p_lower.contains("chrome")
+            || p_lower.contains("http")
+            || p_lower.contains("google")
+        {
             let target_url = if p_lower.contains("ycombinator") || p_lower.contains("hacker") {
                 "https://news.ycombinator.com"
             } else if p_lower.contains("google") {
@@ -295,13 +310,23 @@ impl GeminiClient {
                     "url": target_url
                 }),
             });
-            format!("Frostfire Dev Mock: Navigating to '{}' via Chrome CDP.", target_url)
-        } else if p_lower.contains("kayla") || p_lower.contains("text") || p_lower.contains("message") {
+            format!(
+                "Frostfire Dev Mock: Navigating to '{}' via Chrome CDP.",
+                target_url
+            )
+        } else if p_lower.contains("kayla")
+            || p_lower.contains("text")
+            || p_lower.contains("message")
+        {
             let msg = if p_lower.contains("bed") {
                 "Ill be coming to bed soon"
             } else if let Some(idx) = prompt.to_lowercase().find("text kayla") {
                 let rest = prompt[idx + 10..].trim();
-                if rest.is_empty() { "Ill be coming to bed soon" } else { rest }
+                if rest.is_empty() {
+                    "Ill be coming to bed soon"
+                } else {
+                    rest
+                }
             } else {
                 "Ill be coming to bed soon"
             };
@@ -330,7 +355,10 @@ impl GeminiClient {
             });
             format!("Selecting conversation with Kayla Goulding, typing message: '{}', and sending via Chrome CDP.", msg)
         } else {
-            format!("Frostfire Dev Mock: Received prompt '{}'. Swarm reasoning complete.", prompt)
+            format!(
+                "Frostfire Dev Mock: Received prompt '{}'. Swarm reasoning complete.",
+                prompt
+            )
         };
 
         Ok(GeminiTurnResult {
@@ -362,7 +390,11 @@ impl GeminiClient {
                     text_parts.push(txt.to_string());
                 }
                 if let Some(fc) = part["functionCall"].as_object() {
-                    let name = fc.get("name").and_then(|n| n.as_str()).unwrap_or_default().to_string();
+                    let name = fc
+                        .get("name")
+                        .and_then(|n| n.as_str())
+                        .unwrap_or_default()
+                        .to_string();
                     let args = fc.get("args").cloned().unwrap_or(json!({}));
                     if !name.is_empty() {
                         tool_calls.push(GeminiToolCall { name, args });

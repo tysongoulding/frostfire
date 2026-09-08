@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use super::prompts::{DEFAULT_ARCH_PROMPT, DEFAULT_CODE_PROMPT, DEFAULT_COORDINATOR_PROMPT};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]

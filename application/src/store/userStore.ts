@@ -35,90 +35,40 @@ interface UserState {
   initUsers: (data: { activeUserId?: string; users?: UserProfile[] }) => void;
 }
 
-export const POC_USERS: UserProfile[] = [
-  {
-    id: "user1",
-    name: "Tyson Goulding",
-    email: "tyson@frostfire.ai",
-    role: "Network Architect",
-    bio: "Network Architect & Multi-Agent Orchestrator",
-    customInstructions: "Prefer concise explanations and clean, modular code. Respect project boundaries.",
-    vmHost: "44.242.94.86",
-    agentPorts: { agent1: 6080, agent2: 6081, agent3: 6082 },
-    execPort: 3000,
-    isDefault: true,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "user2",
-    name: "Taylor Goulding",
-    email: "taylor@frostfire.ai",
-    role: "Director of Operations",
-    bio: "Director of Operations & Workflow Automation Lead",
-    customInstructions: "Prefer rapid prototyping, practical scripts, and modular components.",
-    vmHost: "44.242.94.86",
-    agentPorts: { agent1: 6083, agent2: 6084, agent3: 6085 },
-    execPort: 3000,
-    isDefault: false,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "user3",
-    name: "Cason Adams",
-    email: "cason@frostfire.ai",
-    role: "Principal Software Engineer",
-    bio: "Principal Software Engineer & Autonomous Verification Lead",
-    customInstructions: "Focus on automated test passes, edge cases, and tamper-evident logging.",
-    vmHost: "44.242.94.86",
-    agentPorts: { agent1: 6086, agent2: 6087, agent3: 6088 },
-    execPort: 3000,
-    isDefault: false,
-    createdAt: new Date().toISOString(),
-  },
-];
+export const DEFAULT_USER_PROFILE: UserProfile = {
+  id: "user-default",
+  name: "Default Operator",
+  email: "operator@frostfire.local",
+  role: "System Operator",
+  bio: "Autonomous Agent Orchestrator",
+  customInstructions: "Prefer concise explanations and clean, modular code. Respect project boundaries.",
+  vmHost: "44.242.94.86",
+  agentPorts: { agent1: 6080, agent2: 6081, agent3: 6082 },
+  execPort: 3000,
+  isDefault: true,
+  createdAt: new Date().toISOString(),
+};
 
-const STORAGE_KEY = "frostfire-poc-users-v8";
+const STORAGE_KEY = "frostfire-users-v1";
 
 function loadInitialUsers(): { activeUserId: string; users: UserProfile[] } {
   if (typeof window === "undefined") {
-    return { activeUserId: POC_USERS[0].id, users: POC_USERS };
+    return { activeUserId: DEFAULT_USER_PROFILE.id, users: [DEFAULT_USER_PROFILE] };
   }
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed.users) && parsed.users.length > 0) {
-        // Ensure canonical POC users are always in the list
-        const mergedUsers = POC_USERS.map((poc) => {
-          const match = parsed.users.find((u: UserProfile) => u.id === poc.id || u.name === poc.name);
-          const safeHost = (!match?.vmHost || match.vmHost === '44.242.94.87' || match.vmHost === '44.242.94.88')
-            ? poc.vmHost
-            : match.vmHost;
-          return match
-            ? {
-                ...poc,
-                ...match,
-                id: poc.id,
-                name: poc.name,
-                role: poc.role,
-                vmHost: safeHost,
-                agentPorts: match.agentPorts || poc.agentPorts,
-                execPort: match.execPort || poc.execPort,
-              }
-            : poc;
-        });
-        const extraUsers = parsed.users.filter(
-          (u: UserProfile) => !POC_USERS.some((poc) => poc.id === u.id || poc.name === u.name)
-        );
-        const finalUsers = [...mergedUsers, ...extraUsers];
-        const activeId = parsed.activeUserId && finalUsers.some((u) => u.id === parsed.activeUserId)
-          ? parsed.activeUserId
-          : POC_USERS[0].id;
-        return { activeUserId: activeId, users: finalUsers };
+        const activeId =
+          parsed.activeUserId && parsed.users.some((u: UserProfile) => u.id === parsed.activeUserId)
+            ? parsed.activeUserId
+            : parsed.users[0].id;
+        return { activeUserId: activeId, users: parsed.users };
       }
     }
   } catch {}
-  return { activeUserId: POC_USERS[0].id, users: POC_USERS };
+  return { activeUserId: DEFAULT_USER_PROFILE.id, users: [DEFAULT_USER_PROFILE] };
 }
 
 const initial = loadInitialUsers();
@@ -129,7 +79,7 @@ export const useUserStore = create<UserState>((set, get) => ({
 
   getActiveUser: () => {
     const { users, activeUserId } = get();
-    return users.find((u) => u.id === activeUserId) || users[0] || POC_USERS[0];
+    return users.find((u) => u.id === activeUserId) || users[0] || DEFAULT_USER_PROFILE;
   },
 
   addUser: (profile) => {
@@ -181,7 +131,7 @@ export const useUserStore = create<UserState>((set, get) => ({
 
   deleteUser: (id) => {
     const { users, activeUserId } = get();
-    if (users.length <= 3) return; // Keep at least the 3 POC users
+    if (users.length <= 1) return;
 
     const filtered = users.filter((u) => u.id !== id);
     const nextActive = activeUserId === id ? filtered[0].id : activeUserId;
@@ -196,39 +146,19 @@ export const useUserStore = create<UserState>((set, get) => ({
   },
 
   initUsers: (data) => {
-    const loadedUsers = data.users && Array.isArray(data.users) ? data.users : [];
-    // Ensure all 3 canonical POC users are always in the list
-    const mergedUsers = POC_USERS.map((poc) => {
-      const match = loadedUsers.find((u: UserProfile) => u.id === poc.id || u.name === poc.name);
-      const safeHost = (!match?.vmHost || match.vmHost === '44.242.94.87' || match.vmHost === '44.242.94.88')
-        ? poc.vmHost
-        : match.vmHost;
-      return match
-        ? {
-            ...poc,
-            ...match,
-            id: poc.id,
-            name: poc.name,
-            role: poc.role,
-            vmHost: safeHost,
-            agentPorts: match.agentPorts || poc.agentPorts,
-            execPort: match.execPort || poc.execPort,
-          }
-        : poc;
-    });
-    const extraUsers = loadedUsers.filter(
-      (u: UserProfile) => !POC_USERS.some((poc) => poc.id === u.id || poc.name === u.name)
-    );
-    const finalUsers = [...mergedUsers, ...extraUsers];
-    const activeId = data.activeUserId && finalUsers.some((u) => u.id === data.activeUserId)
-      ? data.activeUserId
-      : POC_USERS[0].id;
+    const loadedUsers = data.users && Array.isArray(data.users) && data.users.length > 0
+      ? data.users
+      : [DEFAULT_USER_PROFILE];
+    const activeId =
+      data.activeUserId && loadedUsers.some((u) => u.id === data.activeUserId)
+        ? data.activeUserId
+        : loadedUsers[0].id;
 
     set({
-      users: finalUsers,
+      users: loadedUsers,
       activeUserId: activeId,
     });
-    persist({ activeUserId: activeId, users: finalUsers });
+    persist({ activeUserId: activeId, users: loadedUsers });
   },
 }));
 

@@ -14,6 +14,8 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 frostfire-core.workspace = true
 frostfire-engine.workspace = true
+frostfire-tunnel = { path = "../../crates/frostfire-tunnel" }
+frostfire-proto = { path = "../../crates/frostfire-proto" }
 zeroize = { version = "1.8", features = ["zeroize_derive"] }
 serde.workspace = true
 serde_json.workspace = true

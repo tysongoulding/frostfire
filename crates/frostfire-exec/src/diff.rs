@@ -249,7 +249,12 @@ impl AtomicPatchApplicator {
     }
 
     /// Atomically commits file content via shadow file write and atomic rename.
-    fn commit_atomically(&self, path: &Path, content: &str, create_parents: bool) -> Result<(), DiffError> {
+    fn commit_atomically(
+        &self,
+        path: &Path,
+        content: &str,
+        create_parents: bool,
+    ) -> Result<(), DiffError> {
         let parent = path.parent().unwrap_or_else(|| Path::new("."));
 
         if create_parents && !parent.exists() {
@@ -419,7 +424,10 @@ impl AtomicPatchApplicator {
         // Copy remaining lines from original
         while orig_idx < orig_lines.len() {
             // If original had empty last element due to trailing \n, don't double count if handled
-            if orig_idx == orig_lines.len() - 1 && orig_lines[orig_idx].is_empty() && orig_had_trailing_newline {
+            if orig_idx == orig_lines.len() - 1
+                && orig_lines[orig_idx].is_empty()
+                && orig_had_trailing_newline
+            {
                 break;
             }
             result_lines.push(orig_lines[orig_idx].to_string());
@@ -427,7 +435,10 @@ impl AtomicPatchApplicator {
         }
 
         let mut output = result_lines.join(newline);
-        if (orig_had_trailing_newline || lines_added > 0) && !output.ends_with(newline) && !output.is_empty() {
+        if (orig_had_trailing_newline || lines_added > 0)
+            && !output.ends_with(newline)
+            && !output.is_empty()
+        {
             output.push_str(newline);
         }
 
@@ -459,7 +470,12 @@ impl AtomicPatchApplicator {
                 lines_removed += removed_count;
                 lines_added += added_count;
 
-                current = format!("{}{}{}", &current[..pos], replace, &current[pos + search.len()..]);
+                current = format!(
+                    "{}{}{}",
+                    &current[..pos],
+                    replace,
+                    &current[pos + search.len()..]
+                );
             } else {
                 return Err(DiffError::ContextMismatch {
                     line: 0,
@@ -550,7 +566,10 @@ impl AtomicPatchApplicator {
 
         // Copy remaining lines
         while cursor <= total_lines {
-            if cursor == total_lines && orig_lines[cursor - 1].is_empty() && original.ends_with('\n') {
+            if cursor == total_lines
+                && orig_lines[cursor - 1].is_empty()
+                && original.ends_with('\n')
+            {
                 break;
             }
             result.push(orig_lines[cursor - 1].to_string());
@@ -679,7 +698,9 @@ fn parse_search_replace_blocks(text: &str) -> Result<Vec<(String, String)>, Diff
 
     while let Some(search_start) = remaining.find("<<<<<<< SEARCH") {
         let after_start = &remaining[search_start + "<<<<<<< SEARCH".len()..];
-        let after_start = after_start.strip_prefix("\r\n").unwrap_or_else(|| after_start.strip_prefix('\n').unwrap_or(after_start));
+        let after_start = after_start
+            .strip_prefix("\r\n")
+            .unwrap_or_else(|| after_start.strip_prefix('\n').unwrap_or(after_start));
 
         let sep = match after_start.find("=======") {
             Some(pos) => pos,
@@ -692,7 +713,9 @@ fn parse_search_replace_blocks(text: &str) -> Result<Vec<(String, String)>, Diff
 
         let search_text = after_start[..sep].to_string();
         let after_sep = &after_start[sep + "=======".len()..];
-        let after_sep = after_sep.strip_prefix("\r\n").unwrap_or_else(|| after_sep.strip_prefix('\n').unwrap_or(after_sep));
+        let after_sep = after_sep
+            .strip_prefix("\r\n")
+            .unwrap_or_else(|| after_sep.strip_prefix('\n').unwrap_or(after_sep));
 
         let replace_end = match after_sep.find(">>>>>>> REPLACE") {
             Some(pos) => pos,
@@ -795,7 +818,9 @@ let b2 = 300;
 
         // Stale hash verification failure
         let stale_opts = PatchOptions::new().with_expected_sha256("bad_hash_value");
-        let err = applicator.apply_patch(&file_path, diff, stale_opts).unwrap_err();
+        let err = applicator
+            .apply_patch(&file_path, diff, stale_opts)
+            .unwrap_err();
         assert!(matches!(err, DiffError::HashMismatch { .. }));
 
         // Content on disk must remain uncorrupted
@@ -840,14 +865,12 @@ let b2 = 300;
         let applicator = AtomicPatchApplicator::new();
         let original = "line1\nline2\nline3\nline4\n";
 
-        let replacements = vec![
-            LineReplacement {
-                start_line: 2,
-                end_line: 3,
-                target_content: Some("line2\nline3".to_string()),
-                replacement_content: "line2_new\nline3_new\nline3.5".to_string(),
-            },
-        ];
+        let replacements = vec![LineReplacement {
+            start_line: 2,
+            end_line: 3,
+            target_content: Some("line2\nline3".to_string()),
+            replacement_content: "line2_new\nline3_new\nline3.5".to_string(),
+        }];
 
         let (res, added, removed) = applicator
             .apply_replacements_in_memory(original, &replacements)
@@ -860,7 +883,8 @@ let b2 = 300;
 
     #[test]
     fn test_create_parents_on_new_file() {
-        let temp_dir = std::env::temp_dir().join(format!("frostfire_diff_parents_{}", Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("frostfire_diff_parents_{}", Uuid::new_v4()));
         let nested_file = temp_dir.join("deep").join("nested").join("file.rs");
 
         let applicator = AtomicPatchApplicator::new();
@@ -871,9 +895,11 @@ let b2 = 300;
 
         assert!(res.success);
         assert!(nested_file.exists());
-        assert_eq!(fs::read_to_string(&nested_file).unwrap(), "pub fn nested() {}");
+        assert_eq!(
+            fs::read_to_string(&nested_file).unwrap(),
+            "pub fn nested() {}"
+        );
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
 }
-

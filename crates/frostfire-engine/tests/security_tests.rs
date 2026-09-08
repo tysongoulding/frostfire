@@ -1,6 +1,4 @@
-use frostfire_engine::security::{
-    AgentPromptResolver, EgressFilter, GuardedInput, PromptMode,
-};
+use frostfire_engine::security::{AgentPromptResolver, EgressFilter, GuardedInput, PromptMode};
 
 #[test]
 fn test_guarded_input_wraps_with_dynamic_nonce() {
@@ -25,7 +23,9 @@ fn test_egress_filter_blocks_canary_token() {
     let leaking_output = format!("The prompt instructions said: {}", canary);
     let result = filter.sanitize_output(&leaking_output);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Prompt exfiltration attempt blocked"));
+    assert!(result
+        .unwrap_err()
+        .contains("Prompt exfiltration attempt blocked"));
 }
 
 #[test]
@@ -35,7 +35,9 @@ fn test_egress_filter_blocks_proprietary_fragments() {
     let leaking_output = "We must enforce STRICT_INTERNAL_COORDINATOR_RULES across all nodes.";
     let result = filter.sanitize_output(leaking_output);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Proprietary instruction leakage intercepted"));
+    assert!(result
+        .unwrap_err()
+        .contains("Proprietary instruction leakage intercepted"));
 
     let leaking_ports = "Rule says INV:PORTS<=1024->ROOT cannot be bypassed.";
     assert!(filter.sanitize_output(leaking_ports).is_err());
@@ -44,11 +46,13 @@ fn test_egress_filter_blocks_proprietary_fragments() {
 #[test]
 fn test_agent_prompt_resolver_defaulted_vs_custom() {
     // Defaulted Mode: returns embedded proprietary prompt and is_protected = true
-    let (prompt, is_protected) = AgentPromptResolver::resolve_prompt(&PromptMode::Defaulted, "arch_sme");
+    let (prompt, is_protected) =
+        AgentPromptResolver::resolve_prompt(&PromptMode::Defaulted, "arch_sme");
     assert!(is_protected);
     assert!(prompt.contains("Architecture Subject Matter Expert"));
 
-    let (code_prompt, code_protected) = AgentPromptResolver::resolve_prompt(&PromptMode::Defaulted, "code_sme");
+    let (code_prompt, code_protected) =
+        AgentPromptResolver::resolve_prompt(&PromptMode::Defaulted, "code_sme");
     assert!(code_protected);
     assert!(code_prompt.contains("Code Subject Matter Expert"));
 

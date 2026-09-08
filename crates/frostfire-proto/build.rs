@@ -15,7 +15,13 @@ fn find_protoc() -> Option<PathBuf> {
         let home_path = Path::new(&home);
         let candidates = [
             home_path.join("scoop").join("shims").join("protoc.exe"),
-            home_path.join("scoop").join("apps").join("protobuf").join("current").join("bin").join("protoc.exe"),
+            home_path
+                .join("scoop")
+                .join("apps")
+                .join("protobuf")
+                .join("current")
+                .join("bin")
+                .join("protoc.exe"),
         ];
         for candidate in candidates {
             if candidate.exists() {

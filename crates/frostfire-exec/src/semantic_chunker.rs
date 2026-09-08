@@ -25,7 +25,10 @@ impl Default for SemanticChunker {
 
 impl SemanticChunker {
     pub fn new(max_tokens: usize, min_tokens: usize) -> Self {
-        Self { max_tokens, min_tokens }
+        Self {
+            max_tokens,
+            min_tokens,
+        }
     }
 
     /// Estimates token count using standard 4 characters per token heuristic.
@@ -51,22 +54,21 @@ impl SemanticChunker {
             let trimmed = line.trim();
 
             // Detect new top-level or significant symbol definitions
-            let is_symbol_start = brace_depth == 0 && (
-                trimmed.starts_with("fn ")
-                || trimmed.starts_with("pub fn ")
-                || trimmed.starts_with("pub async fn ")
-                || trimmed.starts_with("async fn ")
-                || trimmed.starts_with("impl ")
-                || trimmed.starts_with("struct ")
-                || trimmed.starts_with("pub struct ")
-                || trimmed.starts_with("enum ")
-                || trimmed.starts_with("pub enum ")
-                || trimmed.starts_with("class ")
-                || trimmed.starts_with("export class ")
-                || trimmed.starts_with("function ")
-                || trimmed.starts_with("export function ")
-                || trimmed.starts_with("def ")
-            );
+            let is_symbol_start = brace_depth == 0
+                && (trimmed.starts_with("fn ")
+                    || trimmed.starts_with("pub fn ")
+                    || trimmed.starts_with("pub async fn ")
+                    || trimmed.starts_with("async fn ")
+                    || trimmed.starts_with("impl ")
+                    || trimmed.starts_with("struct ")
+                    || trimmed.starts_with("pub struct ")
+                    || trimmed.starts_with("enum ")
+                    || trimmed.starts_with("pub enum ")
+                    || trimmed.starts_with("class ")
+                    || trimmed.starts_with("export class ")
+                    || trimmed.starts_with("function ")
+                    || trimmed.starts_with("export function ")
+                    || trimmed.starts_with("def "));
 
             // If we hit a new symbol at depth 0 and we already have accumulated enough tokens, flush current
             let current_text = current_lines.join("\n");
@@ -134,7 +136,10 @@ impl SemanticChunker {
 fn extract_symbol_name(line: &str) -> Option<String> {
     let words: Vec<&str> = line.split_whitespace().collect();
     for (i, word) in words.iter().enumerate() {
-        if matches!(*word, "fn" | "struct" | "enum" | "class" | "function" | "def") {
+        if matches!(
+            *word,
+            "fn" | "struct" | "enum" | "class" | "function" | "def"
+        ) {
             if let Some(name) = words.get(i + 1) {
                 let clean = name.trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
                 if !clean.is_empty() {
@@ -188,7 +193,9 @@ pub fn execute_task(task_id: &str) -> bool {
         assert!(!chunks.is_empty());
         let symbols: Vec<Option<String>> = chunks.iter().map(|c| c.symbol_name.clone()).collect();
         assert!(symbols.iter().any(|s| s.as_deref() == Some("Config")));
-        assert!(symbols.iter().any(|s| s.as_deref() == Some("execute_task") || s.as_deref() == Some("impl Config")));
+        assert!(symbols
+            .iter()
+            .any(|s| s.as_deref() == Some("execute_task") || s.as_deref() == Some("impl Config")));
 
         for chunk in &chunks {
             assert!(chunk.start_line <= chunk.end_line);

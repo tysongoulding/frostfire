@@ -1,25 +1,40 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State, Window};
 
+use crate::keystore::SecureKeystore;
 use crate::paths::AppPaths;
 use crate::protocol::{
-    PromptConfigDto, RpcEvent, SearchResult, SystemStatus, TestKeyResponse, WorkstreamCommand, WorkstreamEvent,
+    PromptConfigDto, RpcEvent, SearchResult, SystemStatus, TestKeyResponse, WorkstreamCommand,
+    WorkstreamEvent,
 };
-use crate::keystore::SecureKeystore;
 use frostfire_core::blackboard::{BlackboardArtifact, BlackboardStore};
 use frostfire_core::blueprints::sprint::OneHourSprintBlueprint;
+use frostfire_core::dag::WorkstreamDag;
+use frostfire_core::models::AgentSessionInfo;
+use frostfire_core::session::AgentSessionManager;
 use frostfire_engine::resilience::CircuitBreaker;
 use frostfire_engine::routing::ModelRouter;
+use frostfire_proto::tunnel::{
+    ApprovalResponse, DagSyncFrame, DisplayTakeoverEvent, TunnelClientFrame,
+    tunnel_client_frame,
+};
+use frostfire_tunnel::TunnelHandle;
 use tokio::sync::RwLock;
+
 pub struct AppState {
     pub paths: AppPaths,
     pub keystore: SecureKeystore,
     pub blackboard: Arc<BlackboardStore>,
+    pub dag_store: Arc<RwLock<HashMap<String, WorkstreamDag>>>,
     pub router: ModelRouter,
     pub circuit_breaker: CircuitBreaker,
     pub total_hours_saved: Arc<RwLock<f64>>,
+    pub tunnel_tx: tokio::sync::mpsc::Sender<TunnelClientFrame>,
+    pub tunnel_handle: Arc<RwLock<Option<TunnelHandle>>>,
+    pub recent_remote_hashes: Arc<RwLock<HashSet<String>>>,
+    pub cloud_server_url: String,
 }
 
 #[tauri::command]
@@ -49,7 +64,9 @@ pub async fn close_window(window: Window) -> Result<(), String> {
 #[tauri::command]
 pub async fn open_local_path(app: AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
-    app.opener().open_path(&path, None::<&str>).map_err(|e| e.to_string())
+    app.opener()
+        .open_path(&path, None::<&str>)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -58,7 +75,9 @@ pub async fn open_external_url(app: AppHandle, url: String) -> Result<(), String
         return Err("Only HTTP and HTTPS URLs are permitted".to_string());
     }
     use tauri_plugin_opener::OpenerExt;
-    app.opener().open_url(&url, None::<&str>).map_err(|e| e.to_string())
+    app.opener()
+        .open_url(&url, None::<&str>)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -156,7 +175,9 @@ pub async fn read_all_models_from_cache(
         return res;
     }
     if let Ok(content) = tokio::fs::read_to_string(&cache_path).await {
-        if let Ok(cache_map) = serde_json::from_str::<HashMap<String, CachedProviderModels>>(&content) {
+        if let Ok(cache_map) =
+            serde_json::from_str::<HashMap<String, CachedProviderModels>>(&content)
+        {
             for (p, entry) in cache_map {
                 res.insert(p, entry.models);
             }
@@ -187,18 +208,30 @@ pub async fn test_provider_key(
     let resolved_key = if let Some(k) = key.filter(|k| !k.trim().is_empty()) {
         Some(k)
     } else {
-        state.keystore.get_secret(&provider).await.ok().flatten().map(|s| s.as_str().to_string())
+        state
+            .keystore
+            .get_secret(&provider)
+            .await
+            .ok()
+            .flatten()
+            .map(|s| s.as_str().to_string())
     };
 
     let clean_key = resolved_key.as_deref().unwrap_or("").trim();
     if clean_key.is_empty() && !is_ollama {
         // Fallback to cached models if available when key is empty
-        if let Some(cached) = read_provider_models_from_cache(&state.paths.app_data_dir, &provider).await {
+        if let Some(cached) =
+            read_provider_models_from_cache(&state.paths.app_data_dir, &provider).await
+        {
             if !cached.is_empty() {
                 return Ok(TestKeyResponse {
                     success: false,
                     latency_ms: 0,
-                    message: format!("No active API key, but {} cached models found for {}", cached.len(), provider),
+                    message: format!(
+                        "No active API key, but {} cached models found for {}",
+                        cached.len(),
+                        provider
+                    ),
                     models: cached,
                 });
             }
@@ -206,7 +239,10 @@ pub async fn test_provider_key(
         return Ok(TestKeyResponse {
             success: false,
             latency_ms: 0,
-            message: format!("No API key found in Keystore for {}. Please enter an API key.", provider),
+            message: format!(
+                "No API key found in Keystore for {}. Please enter an API key.",
+                provider
+            ),
             models: Vec::new(),
         });
     }
@@ -237,12 +273,17 @@ pub async fn test_provider_key(
                                         .get("supportedGenerationMethods")
                                         .and_then(|v| v.as_array())
                                         .map(|methods| {
-                                            methods.iter().any(|m| m.as_str() == Some("generateContent"))
+                                            methods
+                                                .iter()
+                                                .any(|m| m.as_str() == Some("generateContent"))
                                         })
                                         .unwrap_or(true);
                                     if supports_gen {
-                                        if let Some(name) = item.get("name").and_then(|n| n.as_str()) {
-                                            let clean_name = name.strip_prefix("models/").unwrap_or(name);
+                                        if let Some(name) =
+                                            item.get("name").and_then(|n| n.as_str())
+                                        {
+                                            let clean_name =
+                                                name.strip_prefix("models/").unwrap_or(name);
                                             if !is_deprecated_gemini_model(clean_name) {
                                                 models.push(clean_name.to_string());
                                             }
@@ -264,18 +305,26 @@ pub async fn test_provider_key(
                         // Sort models prioritizing latest production generation
                         models.sort_by(|a, b| {
                             let score = |name: &str| -> i32 {
-                                if name.starts_with("gemini-2.0-flash") { 100 }
-                                else if name.starts_with("gemini-2.0-flash-thinking") { 95 }
-                                else if name.starts_with("gemini-2.0") { 90 }
-                                else if name.starts_with("gemini-1.5-flash") { 80 }
-                                else if name.starts_with("gemini-1.5-pro") { 70 }
-                                else { 10 }
+                                if name.starts_with("gemini-2.0-flash") {
+                                    100
+                                } else if name.starts_with("gemini-2.0-flash-thinking") {
+                                    95
+                                } else if name.starts_with("gemini-2.0") {
+                                    90
+                                } else if name.starts_with("gemini-1.5-flash") {
+                                    80
+                                } else if name.starts_with("gemini-1.5-pro") {
+                                    70
+                                } else {
+                                    10
+                                }
                             };
                             score(b).cmp(&score(a))
                         });
 
                         // Cache live discovered models to disk
-                        save_provider_models_to_cache(&state.paths.app_data_dir, "gemini", &models).await;
+                        save_provider_models_to_cache(&state.paths.app_data_dir, "gemini", &models)
+                            .await;
 
                         // Live probe to verify model generation actually succeeds
                         let mut verified_working_model = String::new();
@@ -288,7 +337,9 @@ pub async fn test_provider_key(
                             let ping_body = serde_json::json!({
                                 "contents": [{ "role": "user", "parts": [{ "text": "ping" }] }]
                             });
-                            if let Ok(ping_resp) = client.post(&ping_url).json(&ping_body).send().await {
+                            if let Ok(ping_resp) =
+                                client.post(&ping_url).json(&ping_body).send().await
+                            {
                                 if ping_resp.status().is_success() {
                                     verified_working_model = candidate.clone();
                                     break;
@@ -299,7 +350,11 @@ pub async fn test_provider_key(
                         let message = if !verified_working_model.is_empty() {
                             format!("Google Gemini Verified & Active (Tested generateContent on {}, {} models cached)", verified_working_model, models.len())
                         } else {
-                            format!("Google Gemini Verified ({}, {} models discovered & cached)", status.as_u16(), models.len())
+                            format!(
+                                "Google Gemini Verified ({}, {} models discovered & cached)",
+                                status.as_u16(),
+                                models.len()
+                            )
                         };
 
                         Ok(TestKeyResponse {
@@ -314,7 +369,10 @@ pub async fn test_provider_key(
                             .ok()
                             .and_then(|v| v["error"]["message"].as_str().map(|s| s.to_string()))
                             .unwrap_or_else(|| format!("HTTP {}", status.as_u16()));
-                        let cached = read_provider_models_from_cache(&state.paths.app_data_dir, "gemini").await.unwrap_or_default();
+                        let cached =
+                            read_provider_models_from_cache(&state.paths.app_data_dir, "gemini")
+                                .await
+                                .unwrap_or_default();
                         Ok(TestKeyResponse {
                             success: !cached.is_empty(),
                             latency_ms: latency,
@@ -328,7 +386,10 @@ pub async fn test_provider_key(
                     }
                 }
                 Err(err) => {
-                    let cached = read_provider_models_from_cache(&state.paths.app_data_dir, "gemini").await.unwrap_or_default();
+                    let cached =
+                        read_provider_models_from_cache(&state.paths.app_data_dir, "gemini")
+                            .await
+                            .unwrap_or_default();
                     Ok(TestKeyResponse {
                         success: !cached.is_empty(),
                         latency_ms: start.elapsed().as_millis() as u64,
@@ -377,19 +438,34 @@ pub async fn test_provider_key(
                         }
                         models.sort_by(|a, b| {
                             let score = |name: &str| -> i32 {
-                                if name.contains("3-7-sonnet") { 100 }
-                                else if name.contains("3-5-sonnet") { 90 }
-                                else if name.contains("3-5-haiku") { 80 }
-                                else if name.contains("3-opus") { 70 }
-                                else { 10 }
+                                if name.contains("3-7-sonnet") {
+                                    100
+                                } else if name.contains("3-5-sonnet") {
+                                    90
+                                } else if name.contains("3-5-haiku") {
+                                    80
+                                } else if name.contains("3-opus") {
+                                    70
+                                } else {
+                                    10
+                                }
                             };
                             score(b).cmp(&score(a))
                         });
-                        save_provider_models_to_cache(&state.paths.app_data_dir, "anthropic", &models).await;
+                        save_provider_models_to_cache(
+                            &state.paths.app_data_dir,
+                            "anthropic",
+                            &models,
+                        )
+                        .await;
                         Ok(TestKeyResponse {
                             success: true,
                             latency_ms: latency,
-                            message: format!("Anthropic Verified ({}, {} models cached)", status.as_u16(), models.len()),
+                            message: format!(
+                                "Anthropic Verified ({}, {} models cached)",
+                                status.as_u16(),
+                                models.len()
+                            ),
                             models,
                         })
                     } else {
@@ -398,7 +474,10 @@ pub async fn test_provider_key(
                             .ok()
                             .and_then(|v| v["error"]["message"].as_str().map(|s| s.to_string()))
                             .unwrap_or_else(|| format!("HTTP {}", status.as_u16()));
-                        let cached = read_provider_models_from_cache(&state.paths.app_data_dir, "anthropic").await.unwrap_or_default();
+                        let cached =
+                            read_provider_models_from_cache(&state.paths.app_data_dir, "anthropic")
+                                .await
+                                .unwrap_or_default();
                         Ok(TestKeyResponse {
                             success: !cached.is_empty(),
                             latency_ms: latency,
@@ -412,7 +491,10 @@ pub async fn test_provider_key(
                     }
                 }
                 Err(err) => {
-                    let cached = read_provider_models_from_cache(&state.paths.app_data_dir, "anthropic").await.unwrap_or_default();
+                    let cached =
+                        read_provider_models_from_cache(&state.paths.app_data_dir, "anthropic")
+                            .await
+                            .unwrap_or_default();
                     Ok(TestKeyResponse {
                         success: !cached.is_empty(),
                         latency_ms: start.elapsed().as_millis() as u64,
@@ -445,7 +527,10 @@ pub async fn test_provider_key(
                                 for item in arr {
                                     if let Some(id) = item.get("id").and_then(|i| i.as_str()) {
                                         let m = id.to_lowercase();
-                                        let is_chat = m.starts_with("gpt-") || m.starts_with("o1") || m.starts_with("o3") || m.starts_with("chatgpt-");
+                                        let is_chat = m.starts_with("gpt-")
+                                            || m.starts_with("o1")
+                                            || m.starts_with("o3")
+                                            || m.starts_with("chatgpt-");
                                         let is_unusable = m.contains("audio")
                                             || m.contains("realtime")
                                             || m.contains("embedding")
@@ -475,22 +560,36 @@ pub async fn test_provider_key(
                         }
                         models.sort_by(|a, b| {
                             let score = |name: &str| -> i32 {
-                                if name == "gpt-4o" { 100 }
-                                else if name == "gpt-4o-mini" { 95 }
-                                else if name.starts_with("o3") { 90 }
-                                else if name.starts_with("o1") { 85 }
-                                else if name.starts_with("chatgpt-4o") { 80 }
-                                else if name.starts_with("gpt-4-turbo") { 75 }
-                                else if name.starts_with("gpt-4") { 70 }
-                                else { 50 }
+                                if name == "gpt-4o" {
+                                    100
+                                } else if name == "gpt-4o-mini" {
+                                    95
+                                } else if name.starts_with("o3") {
+                                    90
+                                } else if name.starts_with("o1") {
+                                    85
+                                } else if name.starts_with("chatgpt-4o") {
+                                    80
+                                } else if name.starts_with("gpt-4-turbo") {
+                                    75
+                                } else if name.starts_with("gpt-4") {
+                                    70
+                                } else {
+                                    50
+                                }
                             };
                             score(b).cmp(&score(a))
                         });
-                        save_provider_models_to_cache(&state.paths.app_data_dir, "openai", &models).await;
+                        save_provider_models_to_cache(&state.paths.app_data_dir, "openai", &models)
+                            .await;
                         Ok(TestKeyResponse {
                             success: true,
                             latency_ms: latency,
-                            message: format!("OpenAI Verified ({}, {} models cached)", status.as_u16(), models.len()),
+                            message: format!(
+                                "OpenAI Verified ({}, {} models cached)",
+                                status.as_u16(),
+                                models.len()
+                            ),
                             models,
                         })
                     } else {
@@ -499,7 +598,10 @@ pub async fn test_provider_key(
                             .ok()
                             .and_then(|v| v["error"]["message"].as_str().map(|s| s.to_string()))
                             .unwrap_or_else(|| format!("HTTP {}", status.as_u16()));
-                        let cached = read_provider_models_from_cache(&state.paths.app_data_dir, "openai").await.unwrap_or_default();
+                        let cached =
+                            read_provider_models_from_cache(&state.paths.app_data_dir, "openai")
+                                .await
+                                .unwrap_or_default();
                         Ok(TestKeyResponse {
                             success: !cached.is_empty(),
                             latency_ms: latency,
@@ -513,7 +615,10 @@ pub async fn test_provider_key(
                     }
                 }
                 Err(err) => {
-                    let cached = read_provider_models_from_cache(&state.paths.app_data_dir, "openai").await.unwrap_or_default();
+                    let cached =
+                        read_provider_models_from_cache(&state.paths.app_data_dir, "openai")
+                            .await
+                            .unwrap_or_default();
                     Ok(TestKeyResponse {
                         success: !cached.is_empty(),
                         latency_ms: start.elapsed().as_millis() as u64,
@@ -545,8 +650,15 @@ pub async fn test_provider_key(
                             if let Some(arr) = val.get("data").and_then(|d| d.as_array()) {
                                 for item in arr {
                                     if let Some(id) = item.get("id").and_then(|i| i.as_str()) {
-                                        let is_active = item.get("active").and_then(|a| a.as_bool()).unwrap_or(true);
-                                        if is_active && !id.contains("whisper") && !id.contains("audio") && !id.contains("embedding") {
+                                        let is_active = item
+                                            .get("active")
+                                            .and_then(|a| a.as_bool())
+                                            .unwrap_or(true);
+                                        if is_active
+                                            && !id.contains("whisper")
+                                            && !id.contains("audio")
+                                            && !id.contains("embedding")
+                                        {
                                             models.push(id.to_string());
                                         }
                                     }
@@ -562,19 +674,30 @@ pub async fn test_provider_key(
                         }
                         models.sort_by(|a, b| {
                             let score = |name: &str| -> i32 {
-                                if name.contains("3.3-70b") { 100 }
-                                else if name.contains("3.1-8b") { 90 }
-                                else if name.contains("distill") { 80 }
-                                else if name.contains("mixtral") { 70 }
-                                else { 50 }
+                                if name.contains("3.3-70b") {
+                                    100
+                                } else if name.contains("3.1-8b") {
+                                    90
+                                } else if name.contains("distill") {
+                                    80
+                                } else if name.contains("mixtral") {
+                                    70
+                                } else {
+                                    50
+                                }
                             };
                             score(b).cmp(&score(a))
                         });
-                        save_provider_models_to_cache(&state.paths.app_data_dir, "groq", &models).await;
+                        save_provider_models_to_cache(&state.paths.app_data_dir, "groq", &models)
+                            .await;
                         Ok(TestKeyResponse {
                             success: true,
                             latency_ms: latency,
-                            message: format!("Groq Verified ({}, {} models cached)", status.as_u16(), models.len()),
+                            message: format!(
+                                "Groq Verified ({}, {} models cached)",
+                                status.as_u16(),
+                                models.len()
+                            ),
                             models,
                         })
                     } else {
@@ -583,7 +706,10 @@ pub async fn test_provider_key(
                             .ok()
                             .and_then(|v| v["error"]["message"].as_str().map(|s| s.to_string()))
                             .unwrap_or_else(|| format!("HTTP {}", status.as_u16()));
-                        let cached = read_provider_models_from_cache(&state.paths.app_data_dir, "groq").await.unwrap_or_default();
+                        let cached =
+                            read_provider_models_from_cache(&state.paths.app_data_dir, "groq")
+                                .await
+                                .unwrap_or_default();
                         Ok(TestKeyResponse {
                             success: !cached.is_empty(),
                             latency_ms: latency,
@@ -597,7 +723,9 @@ pub async fn test_provider_key(
                     }
                 }
                 Err(err) => {
-                    let cached = read_provider_models_from_cache(&state.paths.app_data_dir, "groq").await.unwrap_or_default();
+                    let cached = read_provider_models_from_cache(&state.paths.app_data_dir, "groq")
+                        .await
+                        .unwrap_or_default();
                     Ok(TestKeyResponse {
                         success: !cached.is_empty(),
                         latency_ms: start.elapsed().as_millis() as u64,
@@ -635,16 +763,23 @@ pub async fn test_provider_key(
                             }
                         }
                         if models.is_empty() {
-                            models = vec![
-                                "deepseek-chat".to_string(),
-                                "deepseek-reasoner".to_string(),
-                            ];
+                            models =
+                                vec!["deepseek-chat".to_string(), "deepseek-reasoner".to_string()];
                         }
-                        save_provider_models_to_cache(&state.paths.app_data_dir, "deepseek", &models).await;
+                        save_provider_models_to_cache(
+                            &state.paths.app_data_dir,
+                            "deepseek",
+                            &models,
+                        )
+                        .await;
                         Ok(TestKeyResponse {
                             success: true,
                             latency_ms: latency,
-                            message: format!("DeepSeek Verified ({}, {} models cached)", status.as_u16(), models.len()),
+                            message: format!(
+                                "DeepSeek Verified ({}, {} models cached)",
+                                status.as_u16(),
+                                models.len()
+                            ),
                             models,
                         })
                     } else {
@@ -653,7 +788,10 @@ pub async fn test_provider_key(
                             .ok()
                             .and_then(|v| v["error"]["message"].as_str().map(|s| s.to_string()))
                             .unwrap_or_else(|| format!("HTTP {}", status.as_u16()));
-                        let cached = read_provider_models_from_cache(&state.paths.app_data_dir, "deepseek").await.unwrap_or_default();
+                        let cached =
+                            read_provider_models_from_cache(&state.paths.app_data_dir, "deepseek")
+                                .await
+                                .unwrap_or_default();
                         Ok(TestKeyResponse {
                             success: !cached.is_empty(),
                             latency_ms: latency,
@@ -667,7 +805,10 @@ pub async fn test_provider_key(
                     }
                 }
                 Err(err) => {
-                    let cached = read_provider_models_from_cache(&state.paths.app_data_dir, "deepseek").await.unwrap_or_default();
+                    let cached =
+                        read_provider_models_from_cache(&state.paths.app_data_dir, "deepseek")
+                            .await
+                            .unwrap_or_default();
                     Ok(TestKeyResponse {
                         success: !cached.is_empty(),
                         latency_ms: start.elapsed().as_millis() as u64,
@@ -715,19 +856,30 @@ pub async fn test_provider_key(
                         }
                         models.sort_by(|a, b| {
                             let score = |name: &str| -> i32 {
-                                if name.starts_with("grok-2-1212") { 100 }
-                                else if name.starts_with("grok-2") { 90 }
-                                else if name.starts_with("grok-3") { 85 }
-                                else if name.starts_with("grok-beta") { 80 }
-                                else { 50 }
+                                if name.starts_with("grok-2-1212") {
+                                    100
+                                } else if name.starts_with("grok-2") {
+                                    90
+                                } else if name.starts_with("grok-3") {
+                                    85
+                                } else if name.starts_with("grok-beta") {
+                                    80
+                                } else {
+                                    50
+                                }
                             };
                             score(b).cmp(&score(a))
                         });
-                        save_provider_models_to_cache(&state.paths.app_data_dir, "xai", &models).await;
+                        save_provider_models_to_cache(&state.paths.app_data_dir, "xai", &models)
+                            .await;
                         Ok(TestKeyResponse {
                             success: true,
                             latency_ms: latency,
-                            message: format!("xAI Verified ({}, {} models cached)", status.as_u16(), models.len()),
+                            message: format!(
+                                "xAI Verified ({}, {} models cached)",
+                                status.as_u16(),
+                                models.len()
+                            ),
                             models,
                         })
                     } else {
@@ -736,7 +888,10 @@ pub async fn test_provider_key(
                             .ok()
                             .and_then(|v| v["error"]["message"].as_str().map(|s| s.to_string()))
                             .unwrap_or_else(|| format!("HTTP {}", status.as_u16()));
-                        let cached = read_provider_models_from_cache(&state.paths.app_data_dir, "xai").await.unwrap_or_default();
+                        let cached =
+                            read_provider_models_from_cache(&state.paths.app_data_dir, "xai")
+                                .await
+                                .unwrap_or_default();
                         Ok(TestKeyResponse {
                             success: !cached.is_empty(),
                             latency_ms: latency,
@@ -750,7 +905,9 @@ pub async fn test_provider_key(
                     }
                 }
                 Err(err) => {
-                    let cached = read_provider_models_from_cache(&state.paths.app_data_dir, "xai").await.unwrap_or_default();
+                    let cached = read_provider_models_from_cache(&state.paths.app_data_dir, "xai")
+                        .await
+                        .unwrap_or_default();
                     Ok(TestKeyResponse {
                         success: !cached.is_empty(),
                         latency_ms: start.elapsed().as_millis() as u64,
@@ -790,25 +947,40 @@ pub async fn test_provider_key(
                         if models.is_empty() {
                             models = vec!["llama3.2".to_string()];
                         }
-                        save_provider_models_to_cache(&state.paths.app_data_dir, "ollama", &models).await;
+                        save_provider_models_to_cache(&state.paths.app_data_dir, "ollama", &models)
+                            .await;
                         Ok(TestKeyResponse {
                             success: true,
                             latency_ms: latency,
-                            message: format!("Ollama Verified ({}, {} models cached)", status.as_u16(), models.len()),
+                            message: format!(
+                                "Ollama Verified ({}, {} models cached)",
+                                status.as_u16(),
+                                models.len()
+                            ),
                             models,
                         })
                     } else {
-                        let cached = read_provider_models_from_cache(&state.paths.app_data_dir, "ollama").await.unwrap_or_default();
+                        let cached =
+                            read_provider_models_from_cache(&state.paths.app_data_dir, "ollama")
+                                .await
+                                .unwrap_or_default();
                         Ok(TestKeyResponse {
                             success: !cached.is_empty(),
                             latency_ms: latency,
-                            message: format!("Ollama HTTP {} (Cached: {})", status.as_u16(), cached.len()),
+                            message: format!(
+                                "Ollama HTTP {} (Cached: {})",
+                                status.as_u16(),
+                                cached.len()
+                            ),
                             models: cached,
                         })
                     }
                 }
                 Err(err) => {
-                    let cached = read_provider_models_from_cache(&state.paths.app_data_dir, "ollama").await.unwrap_or_default();
+                    let cached =
+                        read_provider_models_from_cache(&state.paths.app_data_dir, "ollama")
+                            .await
+                            .unwrap_or_default();
                     Ok(TestKeyResponse {
                         success: !cached.is_empty(),
                         latency_ms: start.elapsed().as_millis() as u64,
@@ -823,11 +995,17 @@ pub async fn test_provider_key(
             }
         }
         _ => {
-            let cached = read_provider_models_from_cache(&state.paths.app_data_dir, &provider).await.unwrap_or_default();
+            let cached = read_provider_models_from_cache(&state.paths.app_data_dir, &provider)
+                .await
+                .unwrap_or_default();
             Ok(TestKeyResponse {
                 success: true,
                 latency_ms: 5,
-                message: format!("Format accepted for {} (Cached: {})", provider, cached.len()),
+                message: format!(
+                    "Format accepted for {} (Cached: {})",
+                    provider,
+                    cached.len()
+                ),
                 models: cached,
             })
         }
@@ -846,7 +1024,9 @@ pub async fn fetch_provider_models(
             if is_ollama {
                 return test_provider_key(provider, None, state).await;
             }
-            if let Some(cached) = read_provider_models_from_cache(&state.paths.app_data_dir, &provider).await {
+            if let Some(cached) =
+                read_provider_models_from_cache(&state.paths.app_data_dir, &provider).await
+            {
                 if !cached.is_empty() {
                     return Ok(TestKeyResponse {
                         success: true,
@@ -866,10 +1046,16 @@ pub async fn fetch_provider_models(
     };
     let mut resp = test_provider_key(provider.clone(), Some(key), state.clone()).await?;
     if !resp.success || resp.models.is_empty() {
-        if let Some(cached) = read_provider_models_from_cache(&state.paths.app_data_dir, &provider).await {
+        if let Some(cached) =
+            read_provider_models_from_cache(&state.paths.app_data_dir, &provider).await
+        {
             if !cached.is_empty() {
                 resp.success = true;
-                resp.message = format!("Loaded {} cached models for {} (Offline fallback)", cached.len(), provider);
+                resp.message = format!(
+                    "Loaded {} cached models for {} (Offline fallback)",
+                    cached.len(),
+                    provider
+                );
                 resp.models = cached;
             }
         }
@@ -934,16 +1120,13 @@ pub async fn start_oauth_login(
         .map_err(|e| e.to_string())?;
 
     let session = PkceSession::new(&provider);
-    let auth_url = build_auth_url(
-        &provider,
-        &session,
-        port,
-        custom_client_id.as_deref(),
-    )
-    .map_err(|e| e.to_string())?;
+    let auth_url = build_auth_url(&provider, &session, port, custom_client_id.as_deref())
+        .map_err(|e| e.to_string())?;
 
     // Open URL in system default browser
-    app.opener().open_url(&auth_url, None::<&str>).map_err(|e| e.to_string())?;
+    app.opener()
+        .open_url(&auth_url, None::<&str>)
+        .map_err(|e| e.to_string())?;
 
     // Await callback code on loopback with 120s timeout
     let code = OAuthLoopback::listen_on_listener(
@@ -966,24 +1149,23 @@ pub async fn start_oauth_login(
     .map_err(|e| e.to_string())?;
 
     // Store in secure hardware keystore
-    state.keystore.set_secret(&provider, &token).await.map_err(|e| e.to_string())?;
+    state
+        .keystore
+        .set_secret(&provider, &token)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(format!("{} OAuth authorization successful", provider))
 }
 
-
-
 #[tauri::command]
-pub async fn load_lota_settings(
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
+pub async fn load_lota_settings(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let path = state.paths.app_data_dir.join("settings.json");
     if path.exists() {
         let content = tokio::fs::read_to_string(&path)
             .await
             .map_err(|e| e.to_string())?;
-        let val: serde_json::Value = serde_json::from_str(&content)
-            .map_err(|e| e.to_string())?;
+        let val: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
         Ok(val)
     } else {
         Ok(serde_json::json!({}))
@@ -1039,7 +1221,11 @@ fn urlencoding_decode(s: &str) -> String {
 fn urlencoding_encode(s: &str) -> String {
     if let Ok(mut parsed) = reqwest::Url::parse("https://dummy.internal") {
         parsed.query_pairs_mut().append_pair("q", s);
-        return parsed.query().and_then(|q| q.strip_prefix("q=")).unwrap_or(s).to_string();
+        return parsed
+            .query()
+            .and_then(|q| q.strip_prefix("q="))
+            .unwrap_or(s)
+            .to_string();
     }
     s.to_string()
 }
@@ -1144,7 +1330,12 @@ pub async fn perform_web_search(query: &str) -> Result<Vec<SearchResult>, String
             "https://en.wikipedia.org/w/api.php?action=opensearch&search={}&limit=3&namespace=0&format=json",
             urlencoding_encode(clean_query)
         );
-        if let Ok(w_resp) = client.get(&wiki_url).header("User-Agent", "FrostfireOS/0.2.0 (desktop)").send().await {
+        if let Ok(w_resp) = client
+            .get(&wiki_url)
+            .header("User-Agent", "FrostfireOS/0.2.0 (desktop)")
+            .send()
+            .await
+        {
             if w_resp.status().is_success() {
                 if let Ok(w_data) = w_resp.json::<serde_json::Value>().await {
                     if let (Some(titles), Some(snippets), Some(urls)) = (
@@ -1154,10 +1345,25 @@ pub async fn perform_web_search(query: &str) -> Result<Vec<SearchResult>, String
                     ) {
                         for (i, t) in titles.iter().enumerate() {
                             let title = t.as_str().unwrap_or("").to_string();
-                            let snippet = snippets.get(i).and_then(|s| s.as_str()).unwrap_or("").to_string();
-                            let url = urls.get(i).and_then(|u| u.as_str()).unwrap_or("").to_string();
-                            if !title.is_empty() && !url.is_empty() && !results.iter().any(|r| r.url == url) {
-                                results.push(SearchResult { title, snippet, url });
+                            let snippet = snippets
+                                .get(i)
+                                .and_then(|s| s.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let url = urls
+                                .get(i)
+                                .and_then(|u| u.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            if !title.is_empty()
+                                && !url.is_empty()
+                                && !results.iter().any(|r| r.url == url)
+                            {
+                                results.push(SearchResult {
+                                    title,
+                                    snippet,
+                                    url,
+                                });
                             }
                         }
                     }
@@ -1189,8 +1395,15 @@ pub async fn send_rpc_command(
     state: State<'_, AppState>,
     request: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    let req_id = request.get("id").and_then(|v| v.as_str()).unwrap_or("req-0").to_string();
-    let cmd_type = request.get("type").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let req_id = request
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("req-0")
+        .to_string();
+    let cmd_type = request
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
 
     if cmd_type == "web_search" || cmd_type == "search" {
         let query = request.get("query").and_then(|v| v.as_str()).unwrap_or("");
@@ -1206,11 +1419,18 @@ pub async fn send_rpc_command(
     }
 
     if cmd_type == "prompt" {
-        let message = request.get("message").and_then(|v| v.as_str()).unwrap_or("");
+        let message = request
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let is_search_cmd = message.starts_with("/search ")
             || message.starts_with("/browser ")
             || is_search_intent(message);
-        let enable_web_search = request.get("web_search").and_then(|v| v.as_bool()).unwrap_or(false) || is_search_cmd;
+        let enable_web_search = request
+            .get("web_search")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+            || is_search_cmd;
 
         let clean_message = if let Some(s) = message.strip_prefix("/search ") {
             s.trim()
@@ -1245,13 +1465,23 @@ pub async fn send_rpc_command(
                 "xai" => "grok-2-1212",
                 _ => "gemini-2.0-flash",
             });
-        let custom_preamble = request.get("preamble").and_then(|v| v.as_str()).unwrap_or("");
+        let custom_preamble = request
+            .get("preamble")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let effective_system_prompt = if custom_preamble.trim().is_empty() {
             MARKDOWN_SYSTEM_INSTRUCTION.to_string()
         } else {
             custom_preamble.trim().to_string()
         };
-        let ws_id = format!("ws-{}", uuid::Uuid::new_v4().to_string().chars().take(8).collect::<String>());
+        let ws_id = format!(
+            "ws-{}",
+            uuid::Uuid::new_v4()
+                .to_string()
+                .chars()
+                .take(8)
+                .collect::<String>()
+        );
 
         // 1. Emit turn_start
         let _ = app.emit(
@@ -1270,7 +1500,12 @@ pub async fn send_rpc_command(
         };
 
         // 2. Retrieve key/token from hardware Keystore
-        let provider_key = state.keystore.get_secret(requested_provider).await.ok().flatten();
+        let provider_key = state
+            .keystore
+            .get_secret(requested_provider)
+            .await
+            .ok()
+            .flatten();
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(60))
@@ -1342,27 +1577,51 @@ pub async fn send_rpc_command(
                             Ok(resp) => {
                                 let status = resp.status();
                                 if status.is_success() {
-                                    let data: serde_json::Value = resp.json().await.unwrap_or_default();
-                                    let mut text = data["candidates"][0]["content"]["parts"][0]["text"]
+                                    let data: serde_json::Value =
+                                        resp.json().await.unwrap_or_default();
+                                    let mut text = data["candidates"][0]["content"]["parts"][0]
+                                        ["text"]
                                         .as_str()
                                         .unwrap_or("No response content generated from Gemini.")
                                         .to_string();
 
                                     // Extract grounding metadata sources
-                                    if let Some(grounding) = data["candidates"][0].get("groundingMetadata") {
+                                    if let Some(grounding) =
+                                        data["candidates"][0].get("groundingMetadata")
+                                    {
                                         let mut sources = Vec::new();
-                                        let mut chunk_to_source_index = std::collections::HashMap::new();
-                                        if let Some(chunks) = grounding.get("groundingChunks").and_then(|c| c.as_array()) {
+                                        let mut chunk_to_source_index =
+                                            std::collections::HashMap::new();
+                                        if let Some(chunks) = grounding
+                                            .get("groundingChunks")
+                                            .and_then(|c| c.as_array())
+                                        {
                                             for (chunk_idx, chunk) in chunks.iter().enumerate() {
                                                 if let Some(web) = chunk.get("web") {
-                                                    let uri = web.get("uri").and_then(|u| u.as_str()).unwrap_or("");
-                                                    let title = web.get("title").and_then(|t| t.as_str()).unwrap_or(uri);
+                                                    let uri = web
+                                                        .get("uri")
+                                                        .and_then(|u| u.as_str())
+                                                        .unwrap_or("");
+                                                    let title = web
+                                                        .get("title")
+                                                        .and_then(|t| t.as_str())
+                                                        .unwrap_or(uri);
                                                     if !uri.is_empty() {
-                                                        if let Some(existing_pos) = sources.iter().position(|(u, _)| u == uri) {
-                                                            chunk_to_source_index.insert(chunk_idx, existing_pos + 1);
+                                                        if let Some(existing_pos) = sources
+                                                            .iter()
+                                                            .position(|(u, _)| u == uri)
+                                                        {
+                                                            chunk_to_source_index.insert(
+                                                                chunk_idx,
+                                                                existing_pos + 1,
+                                                            );
                                                         } else {
-                                                            sources.push((uri.to_string(), title.to_string()));
-                                                            chunk_to_source_index.insert(chunk_idx, sources.len());
+                                                            sources.push((
+                                                                uri.to_string(),
+                                                                title.to_string(),
+                                                            ));
+                                                            chunk_to_source_index
+                                                                .insert(chunk_idx, sources.len());
                                                         }
                                                     }
                                                 }
@@ -1371,15 +1630,27 @@ pub async fn send_rpc_command(
 
                                         // Inject inline footnotes [1], [2] from groundingSupports if Gemini did not include them
                                         if !text.contains("[1]") && !sources.is_empty() {
-                                            if let Some(supports) = grounding.get("groundingSupports").and_then(|s| s.as_array()) {
-                                                let mut insertions: Vec<(usize, Vec<usize>)> = Vec::new();
+                                            if let Some(supports) = grounding
+                                                .get("groundingSupports")
+                                                .and_then(|s| s.as_array())
+                                            {
+                                                let mut insertions: Vec<(usize, Vec<usize>)> =
+                                                    Vec::new();
                                                 for sup in supports {
-                                                    if let Some(chunk_indices) = sup.get("groundingChunkIndices").and_then(|i| i.as_array()) {
+                                                    if let Some(chunk_indices) = sup
+                                                        .get("groundingChunkIndices")
+                                                        .and_then(|i| i.as_array())
+                                                    {
                                                         let mut note_nums = Vec::new();
                                                         for c_idx in chunk_indices {
-                                                            if let Some(ci) = c_idx.as_u64().map(|n| n as usize) {
-                                                                if let Some(&src_num) = chunk_to_source_index.get(&ci) {
-                                                                    if !note_nums.contains(&src_num) {
+                                                            if let Some(ci) =
+                                                                c_idx.as_u64().map(|n| n as usize)
+                                                            {
+                                                                if let Some(&src_num) =
+                                                                    chunk_to_source_index.get(&ci)
+                                                                {
+                                                                    if !note_nums.contains(&src_num)
+                                                                    {
                                                                         note_nums.push(src_num);
                                                                     }
                                                                 }
@@ -1387,26 +1658,42 @@ pub async fn send_rpc_command(
                                                         }
                                                         if !note_nums.is_empty() {
                                                             note_nums.sort();
-                                                            let end_idx = sup.get("segment")
+                                                            let end_idx = sup
+                                                                .get("segment")
                                                                 .and_then(|seg| seg.get("endIndex"))
                                                                 .and_then(|e| e.as_u64())
-                                                                .unwrap_or(0) as usize;
+                                                                .unwrap_or(0)
+                                                                as usize;
                                                             if end_idx > 0 {
-                                                                insertions.push((end_idx, note_nums));
+                                                                insertions
+                                                                    .push((end_idx, note_nums));
                                                             }
                                                         }
                                                     }
                                                 }
 
                                                 if !insertions.is_empty() {
-                                                    insertions.sort_by_key(|a| std::cmp::Reverse(a.0));
-                                                    let mut char_vec: Vec<char> = text.chars().collect();
+                                                    insertions
+                                                        .sort_by_key(|a| std::cmp::Reverse(a.0));
+                                                    let mut char_vec: Vec<char> =
+                                                        text.chars().collect();
                                                     let len = char_vec.len();
                                                     for (end_char_idx, note_nums) in insertions {
                                                         let target_pos = end_char_idx.min(len);
-                                                        let notes_str = format!(" [{}]", note_nums.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(", "));
-                                                        let note_chars: Vec<char> = notes_str.chars().collect();
-                                                        char_vec.splice(target_pos..target_pos, note_chars);
+                                                        let notes_str = format!(
+                                                            " [{}]",
+                                                            note_nums
+                                                                .iter()
+                                                                .map(|n| n.to_string())
+                                                                .collect::<Vec<_>>()
+                                                                .join(", ")
+                                                        );
+                                                        let note_chars: Vec<char> =
+                                                            notes_str.chars().collect();
+                                                        char_vec.splice(
+                                                            target_pos..target_pos,
+                                                            note_chars,
+                                                        );
                                                     }
                                                     text = char_vec.into_iter().collect();
                                                 }
@@ -1414,15 +1701,27 @@ pub async fn send_rpc_command(
                                         }
 
                                         if !sources.is_empty() {
-                                            text.push_str("\n\n---\n**🌐 Web Sources Consulted:**\n");
+                                            text.push_str(
+                                                "\n\n---\n**🌐 Web Sources Consulted:**\n",
+                                            );
                                             for (i, (uri, title)) in sources.iter().enumerate() {
-                                                text.push_str(&format!("{}. [{}]({})\n", i + 1, title, uri));
+                                                text.push_str(&format!(
+                                                    "{}. [{}]({})\n",
+                                                    i + 1,
+                                                    title,
+                                                    uri
+                                                ));
                                             }
                                         }
                                     } else if enable_web_search && !web_results.is_empty() {
                                         text.push_str("\n\n---\n**🌐 Web Sources Consulted:**\n");
                                         for (i, res) in web_results.iter().take(4).enumerate() {
-                                            text.push_str(&format!("{}. [{}]({})\n", i + 1, res.title, res.url));
+                                            text.push_str(&format!(
+                                                "{}. [{}]({})\n",
+                                                i + 1,
+                                                res.title,
+                                                res.url
+                                            ));
                                         }
                                     }
 
@@ -1441,15 +1740,30 @@ pub async fn send_rpc_command(
                                     let err_body = resp.text().await.unwrap_or_default();
                                     let msg = serde_json::from_str::<serde_json::Value>(&err_body)
                                         .ok()
-                                        .and_then(|v| v["error"]["message"].as_str().map(|s| s.to_string()))
+                                        .and_then(|v| {
+                                            v["error"]["message"].as_str().map(|s| s.to_string())
+                                        })
                                         .unwrap_or_else(|| format!("HTTP {}", status.as_u16()));
 
                                     // Fallback retry without googleSearch tool if model candidate does not support tools
-                                    if enable_web_search && (msg.contains("Tool") || msg.contains("googleSearch") || msg.contains("unsupported")) {
+                                    if enable_web_search
+                                        && (msg.contains("Tool")
+                                            || msg.contains("googleSearch")
+                                            || msg.contains("unsupported"))
+                                    {
                                         let fallback_prompt = if !web_results.is_empty() {
-                                            let mut ctx = format!("Live Web Search Results for '{}':\n\n", search_query);
+                                            let mut ctx = format!(
+                                                "Live Web Search Results for '{}':\n\n",
+                                                search_query
+                                            );
                                             for (i, r) in web_results.iter().take(4).enumerate() {
-                                                ctx.push_str(&format!("{}. [{}]({})\n   {}\n\n", i + 1, r.title, r.url, r.snippet));
+                                                ctx.push_str(&format!(
+                                                    "{}. [{}]({})\n   {}\n\n",
+                                                    i + 1,
+                                                    r.title,
+                                                    r.url,
+                                                    r.snippet
+                                                ));
                                             }
                                             ctx.push_str("Based on the live web search results above, answer the prompt directly and cite your sources inline using numbered footnotes [1], [2], [3] directly after claims (matching the numbered sources above). Do NOT create a sources list at the end.\n\nUser Question: ");
                                             ctx.push_str(clean_message);
@@ -1470,17 +1784,33 @@ pub async fn send_rpc_command(
                                             ]
                                         });
 
-                                        if let Ok(retry_resp) = client.post(&url).json(&fallback_body).send().await {
+                                        if let Ok(retry_resp) =
+                                            client.post(&url).json(&fallback_body).send().await
+                                        {
                                             if retry_resp.status().is_success() {
-                                                let retry_data: serde_json::Value = retry_resp.json().await.unwrap_or_default();
-                                                let mut text = retry_data["candidates"][0]["content"]["parts"][0]["text"]
+                                                let retry_data: serde_json::Value =
+                                                    retry_resp.json().await.unwrap_or_default();
+                                                let mut text = retry_data["candidates"][0]
+                                                    ["content"]["parts"][0]["text"]
                                                     .as_str()
                                                     .unwrap_or("No response generated.")
                                                     .to_string();
-                                                if enable_web_search && !web_results.is_empty() && !text.contains("🌐 Web Sources Consulted") {
-                                                    text.push_str("\n\n---\n**🌐 Web Sources Consulted:**\n");
-                                                    for (i, res) in web_results.iter().take(4).enumerate() {
-                                                        text.push_str(&format!("{}. [{}]({})\n", i + 1, res.title, res.url));
+                                                if enable_web_search
+                                                    && !web_results.is_empty()
+                                                    && !text.contains("🌐 Web Sources Consulted")
+                                                {
+                                                    text.push_str(
+                                                        "\n\n---\n**🌐 Web Sources Consulted:**\n",
+                                                    );
+                                                    for (i, res) in
+                                                        web_results.iter().take(4).enumerate()
+                                                    {
+                                                        text.push_str(&format!(
+                                                            "{}. [{}]({})\n",
+                                                            i + 1,
+                                                            res.title,
+                                                            res.url
+                                                        ));
                                                     }
                                                 }
                                                 final_text = text;
@@ -1503,7 +1833,8 @@ pub async fn send_rpc_command(
                             }
                             Err(e) => {
                                 if idx == candidates.len() - 1 {
-                                    final_text = format!("⚠️ Google Gemini Connection Error: {}", e);
+                                    final_text =
+                                        format!("⚠️ Google Gemini Connection Error: {}", e);
                                     break;
                                 }
                             }
@@ -1520,9 +1851,16 @@ pub async fn send_rpc_command(
                     };
 
                     let user_content = if enable_web_search && !web_results.is_empty() {
-                        let mut ctx = format!("Live Web Search Results for '{}':\n\n", search_query);
+                        let mut ctx =
+                            format!("Live Web Search Results for '{}':\n\n", search_query);
                         for (i, r) in web_results.iter().take(5).enumerate() {
-                            ctx.push_str(&format!("{}. [{}]({})\n   {}\n\n", i + 1, r.title, r.url, r.snippet));
+                            ctx.push_str(&format!(
+                                "{}. [{}]({})\n   {}\n\n",
+                                i + 1,
+                                r.title,
+                                r.url,
+                                r.snippet
+                            ));
                         }
                         ctx.push_str("Based on the live web search results above, answer the prompt directly and cite your sources inline using numbered footnotes [1], [2], [3] directly after claims (matching the numbered sources above). Do NOT create a sources list at the end.\n\nUser Question: ");
                         ctx.push_str(clean_message);
@@ -1558,10 +1896,18 @@ pub async fn send_rpc_command(
                                     .as_str()
                                     .unwrap_or("")
                                     .to_string();
-                                if enable_web_search && !web_results.is_empty() && !text.contains("🌐 Web Sources Consulted") {
+                                if enable_web_search
+                                    && !web_results.is_empty()
+                                    && !text.contains("🌐 Web Sources Consulted")
+                                {
                                     text.push_str("\n\n---\n**🌐 Web Sources Consulted:**\n");
                                     for (i, res) in web_results.iter().take(5).enumerate() {
-                                        text.push_str(&format!("{}. [{}]({})\n", i + 1, res.title, res.url));
+                                        text.push_str(&format!(
+                                            "{}. [{}]({})\n",
+                                            i + 1,
+                                            res.title,
+                                            res.url
+                                        ));
                                     }
                                 }
                                 (text, reasoning)
@@ -1569,20 +1915,43 @@ pub async fn send_rpc_command(
                                 let err_body = resp.text().await.unwrap_or_default();
                                 let msg = serde_json::from_str::<serde_json::Value>(&err_body)
                                     .ok()
-                                    .and_then(|v| v["error"]["message"].as_str().map(|s| s.to_string()))
+                                    .and_then(|v| {
+                                        v["error"]["message"].as_str().map(|s| s.to_string())
+                                    })
                                     .unwrap_or_else(|| format!("HTTP {}", status.as_u16()));
-                                (format!("⚠️ {} API Error: {}", requested_provider.to_uppercase(), msg), String::new())
+                                (
+                                    format!(
+                                        "⚠️ {} API Error: {}",
+                                        requested_provider.to_uppercase(),
+                                        msg
+                                    ),
+                                    String::new(),
+                                )
                             }
                         }
-                        Err(e) => (format!("⚠️ {} Connection Error: {}", requested_provider.to_uppercase(), e), String::new()),
+                        Err(e) => (
+                            format!(
+                                "⚠️ {} Connection Error: {}",
+                                requested_provider.to_uppercase(),
+                                e
+                            ),
+                            String::new(),
+                        ),
                     }
                 }
                 "anthropic" => {
                     let endpoint = "https://api.anthropic.com/v1/messages";
                     let user_content = if enable_web_search && !web_results.is_empty() {
-                        let mut ctx = format!("Live Web Search Results for '{}':\n\n", search_query);
+                        let mut ctx =
+                            format!("Live Web Search Results for '{}':\n\n", search_query);
                         for (i, r) in web_results.iter().take(5).enumerate() {
-                            ctx.push_str(&format!("{}. [{}]({})\n   {}\n\n", i + 1, r.title, r.url, r.snippet));
+                            ctx.push_str(&format!(
+                                "{}. [{}]({})\n   {}\n\n",
+                                i + 1,
+                                r.title,
+                                r.url,
+                                r.snippet
+                            ));
                         }
                         ctx.push_str("Based on the live web search results above, answer the prompt directly and cite your sources inline using numbered footnotes [1], [2], [3] directly after claims (matching the numbered sources above). Do NOT create a sources list at the end.\n\nUser Question: ");
                         ctx.push_str(clean_message);
@@ -1625,10 +1994,18 @@ pub async fn send_rpc_command(
                                         }
                                     }
                                 }
-                                if enable_web_search && !web_results.is_empty() && !text.contains("🌐 Web Sources Consulted") {
+                                if enable_web_search
+                                    && !web_results.is_empty()
+                                    && !text.contains("🌐 Web Sources Consulted")
+                                {
                                     text.push_str("\n\n---\n**🌐 Web Sources Consulted:**\n");
                                     for (i, res) in web_results.iter().take(5).enumerate() {
-                                        text.push_str(&format!("{}. [{}]({})\n", i + 1, res.title, res.url));
+                                        text.push_str(&format!(
+                                            "{}. [{}]({})\n",
+                                            i + 1,
+                                            res.title,
+                                            res.url
+                                        ));
                                     }
                                 }
                                 (text, reasoning)
@@ -1636,24 +2013,39 @@ pub async fn send_rpc_command(
                                 let err_body = resp.text().await.unwrap_or_default();
                                 let msg = serde_json::from_str::<serde_json::Value>(&err_body)
                                     .ok()
-                                    .and_then(|v| v["error"]["message"].as_str().map(|s| s.to_string()))
+                                    .and_then(|v| {
+                                        v["error"]["message"].as_str().map(|s| s.to_string())
+                                    })
                                     .unwrap_or_else(|| format!("HTTP {}", status.as_u16()));
                                 (format!("⚠️ Anthropic API Error: {}", msg), String::new())
                             }
                         }
-                        Err(e) => (format!("⚠️ Anthropic Connection Error: {}", e), String::new()),
+                        Err(e) => (
+                            format!("⚠️ Anthropic Connection Error: {}", e),
+                            String::new(),
+                        ),
                     }
                 }
                 _ => (
-                    format!("⚠️ Provider {} not configured for native execution.", requested_provider),
+                    format!(
+                        "⚠️ Provider {} not configured for native execution.",
+                        requested_provider
+                    ),
                     String::new(),
                 ),
             }
         } else {
             if enable_web_search && !web_results.is_empty() {
-                let mut search_summary = format!("### 🌐 Live Web Search Results for `{}`\n\n", search_query);
+                let mut search_summary =
+                    format!("### 🌐 Live Web Search Results for `{}`\n\n", search_query);
                 for (i, res) in web_results.iter().take(5).enumerate() {
-                    search_summary.push_str(&format!("{}. **[{}]({})**\n   {}\n\n", i + 1, res.title, res.url, res.snippet));
+                    search_summary.push_str(&format!(
+                        "{}. **[{}]({})**\n   {}\n\n",
+                        i + 1,
+                        res.title,
+                        res.url,
+                        res.snippet
+                    ));
                 }
                 search_summary.push_str(&format!(
                     "> [!NOTE]\n> Web search completed natively via FrostfireOS. To have an AI model synthesize and reason over these results, configure your **{}** API key in Settings.",
@@ -1698,14 +2090,8 @@ pub async fn send_rpc_command(
             tokio::time::sleep(tokio::time::Duration::from_millis(12)).await;
         }
 
-
         // 4. Emit turn_end
-        let _ = app.emit(
-            "rho://event",
-            RpcEvent::TurnEnd {
-                turn_number: 1,
-            },
-        );
+        let _ = app.emit("rho://event", RpcEvent::TurnEnd { turn_number: 1 });
 
         // Increment FTA hours
         {
@@ -1745,7 +2131,14 @@ pub async fn execute_command(
             workstream_name,
             params: _,
         } => {
-            let ws_id = format!("ws-{}", uuid::Uuid::new_v4().to_string().chars().take(8).collect::<String>());
+            let ws_id = format!(
+                "ws-{}",
+                uuid::Uuid::new_v4()
+                    .to_string()
+                    .chars()
+                    .take(8)
+                    .collect::<String>()
+            );
 
             let _ = app.emit(
                 "workstream://event",
@@ -1759,12 +2152,18 @@ pub async fn execute_command(
 
             if blueprint_id.contains("sprint") || blueprint_id == "1hour" {
                 let _sprint = OneHourSprintBlueprint::new(&ws_id, &workstream_name);
-                let artifact_uri = format!("blackboard://{}/team-research/sme_research/user_journey@v1", ws_id);
+                let artifact_uri = format!(
+                    "blackboard://{}/team-research/sme_research/user_journey@v1",
+                    ws_id
+                );
                 if let Ok(art) = BlackboardArtifact::new(
                     &artifact_uri,
                     "sme_research",
                     "User Journey & Domain Brief",
-                    &format!("# User Journey for {}\nDomain entities and touchpoints analyzed.", workstream_name),
+                    &format!(
+                        "# User Journey for {}\nDomain entities and touchpoints analyzed.",
+                        workstream_name
+                    ),
                     "text/markdown",
                 ) {
                     let _ = state.blackboard.publish("sme_research", art).await;
@@ -1780,7 +2179,8 @@ pub async fn execute_command(
                     );
                 }
 
-                let stream_text = "Analyzing requirement brief... Identified 3 core persona workflows.";
+                let stream_text =
+                    "Analyzing requirement brief... Identified 3 core persona workflows.";
                 for chunk in stream_text.split_whitespace() {
                     let _ = app.emit(
                         "workstream://event",
@@ -1805,23 +2205,19 @@ pub async fn execute_command(
             }))
         }
 
-        WorkstreamCommand::PauseWorkstream { workstream_id } => {
-            Ok(serde_json::json!({
-                "status": "paused",
-                "workstream_id": workstream_id
-            }))
-        }
+        WorkstreamCommand::PauseWorkstream { workstream_id } => Ok(serde_json::json!({
+            "status": "paused",
+            "workstream_id": workstream_id
+        })),
 
         WorkstreamCommand::ApproveMilestone {
             workstream_id,
             milestone_id,
-        } => {
-            Ok(serde_json::json!({
-                "status": "approved",
-                "workstream_id": workstream_id,
-                "milestone_id": milestone_id
-            }))
-        }
+        } => Ok(serde_json::json!({
+            "status": "approved",
+            "workstream_id": workstream_id,
+            "milestone_id": milestone_id
+        })),
 
         WorkstreamCommand::ReadBlackboard { uri } => {
             let art = state
@@ -1875,7 +2271,11 @@ pub async fn execute_command(
             Ok(serde_json::to_value(&config).map_err(|e| e.to_string())?)
         }
 
-        WorkstreamCommand::SaveCustomPrompt { role, content, activate } => {
+        WorkstreamCommand::SaveCustomPrompt {
+            role,
+            content,
+            activate,
+        } => {
             save_custom_prompt(state, role, content, activate).await?;
             Ok(serde_json::json!({ "status": "saved" }))
         }
@@ -2000,43 +2400,81 @@ pub struct CloudAgentInfo {
 }
 
 #[tauri::command]
-pub async fn get_cloud_agents() -> Result<Vec<CloudAgentInfo>, String> {
-    Ok(vec![
-        CloudAgentInfo {
-            id: "agent1".to_string(),
-            name: "Agent 1".to_string(),
-            role: "Browser & Web Research".to_string(),
-            display_number: 1,
-            vnc_port: 5901,
-            cdp_port: 9223,
-            novnc_token: "agent1".to_string(),
-            status: "Idle".to_string(),
-        },
-        CloudAgentInfo {
-            id: "agent2".to_string(),
-            name: "Agent 2".to_string(),
-            role: "Terminal & Cloud Engineering".to_string(),
-            display_number: 2,
-            vnc_port: 5902,
-            cdp_port: 9224,
-            novnc_token: "agent2".to_string(),
-            status: "Idle".to_string(),
-        },
-        CloudAgentInfo {
-            id: "agent3".to_string(),
-            name: "Agent 3".to_string(),
-            role: "QA, Testing & Verification".to_string(),
-            display_number: 3,
-            vnc_port: 5903,
-            cdp_port: 9225,
-            novnc_token: "agent3".to_string(),
-            status: "Idle".to_string(),
-        },
-    ])
+pub async fn list_agent_sessions(
+    state: State<'_, AppState>,
+) -> Result<Vec<AgentSessionInfo>, String> {
+    AgentSessionManager::list_sessions(&state.paths.agents_dir)
+        .map_err(|e| format!("Failed to list agent sessions: {}", e))
+}
+
+#[tauri::command]
+pub async fn create_agent_session(
+    state: State<'_, AppState>,
+    name: String,
+    role: String,
+    description: Option<String>,
+    system_prompt: Option<String>,
+    is_team: Option<bool>,
+    member_ids: Option<Vec<String>>,
+) -> Result<AgentSessionInfo, String> {
+    let _ = member_ids;
+    let vm_host = std::env::var("EC2_AGENT_HOST")
+        .ok()
+        .filter(|h| !h.trim().is_empty())
+        .or_else(|| Some("44.242.94.86".to_string()));
+
+    let team_id = if is_team.unwrap_or(false) {
+        Some(format!("team_{}", uuid::Uuid::new_v4().simple()))
+    } else {
+        None
+    };
+
+    AgentSessionManager::create_session(
+        &state.paths.agents_dir,
+        name,
+        role,
+        description,
+        system_prompt,
+        vm_host,
+        team_id,
+    )
+    .map_err(|e| format!("Failed to create agent session: {}", e))
+}
+
+#[tauri::command]
+pub async fn delete_agent_session(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    AgentSessionManager::delete_session(&state.paths.agents_dir, &id)
+        .map_err(|e| format!("Failed to delete agent session: {}", e))
+}
+
+#[tauri::command]
+pub async fn get_cloud_agents(state: State<'_, AppState>) -> Result<Vec<CloudAgentInfo>, String> {
+    let sessions = AgentSessionManager::list_sessions(&state.paths.agents_dir)
+        .map_err(|e| format!("Failed to query agent sessions: {}", e))?;
+
+    let agents = sessions
+        .into_iter()
+        .map(|s| CloudAgentInfo {
+            id: s.id.clone(),
+            name: s.name,
+            role: s.role,
+            display_number: s.display_number as u32,
+            vnc_port: s.vnc_port,
+            cdp_port: s.cdp_port,
+            novnc_token: s.id,
+            status: s.status,
+        })
+        .collect();
+
+    Ok(agents)
 }
 
 #[tauri::command]
 pub async fn set_display_takeover(
+    state: State<'_, AppState>,
     display_number: u32,
     take_control: bool,
 ) -> Result<bool, String> {
@@ -2045,16 +2483,43 @@ pub async fn set_display_takeover(
         display_number,
         take_control
     );
+
+    let action = if take_control {
+        frostfire_proto::tunnel::display_takeover_event::Action::UserFocused as i32
+    } else {
+        frostfire_proto::tunnel::display_takeover_event::Action::UserReleased as i32
+    };
+
+    let frame = TunnelClientFrame {
+        frame_id: format!("takeover-{}", uuid::Uuid::new_v4()),
+        timestamp_unix_ms: chrono::Utc::now().timestamp_millis(),
+        agent_id: "desktop".to_string(),
+        payload: Some(tunnel_client_frame::Payload::DisplayTakeover(
+            DisplayTakeoverEvent {
+                session_id: format!("disp_{}", display_number),
+                display_number,
+                action,
+            },
+        )),
+    };
+
+    let _ = state.tunnel_tx.send(frame).await;
     Ok(take_control)
 }
 
 #[tauri::command]
 pub async fn trigger_teach_session(
+    state: State<'_, AppState>,
     display_number: u32,
     action: String,
     session_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let id = session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let id = session_id.unwrap_or_else(AgentSessionManager::generate_agent_id);
+    let teach_dir = state.paths.app_data_dir.join("teach_sessions").join(&id);
+    std::fs::create_dir_all(&teach_dir)
+        .map_err(|e| format!("Failed to create teach session dir: {}", e))?;
+
+    let timestamp = chrono::Utc::now().to_rfc3339();
     tracing::info!(
         "🎓 [Tauri Teach] Display :{} action={} session_id={}",
         display_number,
@@ -2062,21 +2527,68 @@ pub async fn trigger_teach_session(
         id
     );
 
+    let status = match action.as_str() {
+        "start" => {
+            let meta = serde_json::json!({
+                "session_id": id,
+                "display": display_number,
+                "status": "recording",
+                "started_at": timestamp,
+            });
+            let _ = std::fs::write(
+                teach_dir.join("session.json"),
+                serde_json::to_string_pretty(&meta).unwrap_or_default(),
+            );
+            "recording"
+        }
+        "stop" | "compile_sop" => {
+            let started_at = if let Ok(content) = std::fs::read_to_string(teach_dir.join("session.json")) {
+                serde_json::from_str::<serde_json::Value>(&content)
+                    .ok()
+                    .and_then(|v| v["started_at"].as_str().map(|s| s.to_string()))
+                    .unwrap_or_else(|| timestamp.clone())
+            } else {
+                timestamp.clone()
+            };
+
+            let sop_markdown = format!(
+                "# SOP: Demonstration on Display :{}\n\n\
+                 - Session ID: `{}`\n\
+                 - Started: {}\n\
+                 - Completed: {}\n\
+                 - Display Target: :{}\n\n\
+                 ## Recorded Action Sequence\n\
+                 1. Workflow initialized on Display :{}\n\
+                 2. Target application stream captured\n\
+                 3. Verification completed\n",
+                display_number, id, started_at, timestamp, display_number, display_number
+            );
+
+            let _ = std::fs::write(teach_dir.join("SOP.md"), &sop_markdown);
+            "completed"
+        }
+        other => return Err(format!("Unknown teach session action: {}", other)),
+    };
+
+    let sop_content = if status == "completed" {
+        std::fs::read_to_string(teach_dir.join("SOP.md")).unwrap_or_default()
+    } else {
+        String::new()
+    };
+
     Ok(serde_json::json!({
         "sessionId": id,
         "display": display_number,
         "action": action,
-        "status": if action == "start" { "recording" } else { "completed" },
-        "sopMarkdown": if action == "stop" {
-            "# SOP: Recorded User Demonstration\n\n## Summary\nDemonstration on Display completed successfully.\n\n## Action Steps\n1. Authenticate with cloud service.\n2. Navigate through workflow.\n3. Verify results in terminal."
-        } else {
-            ""
-        }
+        "status": status,
+        "sopMarkdown": sop_content,
+        "timestamp": timestamp,
     }))
 }
 
 #[tauri::command]
 pub async fn respond_hitl_approval(
+    state: State<'_, AppState>,
     request_id: String,
     approved: bool,
     reason: String,
@@ -2088,12 +2600,177 @@ pub async fn respond_hitl_approval(
         reason
     );
 
+    let frame = TunnelClientFrame {
+        frame_id: format!("hitl-resp-{}", uuid::Uuid::new_v4()),
+        timestamp_unix_ms: chrono::Utc::now().timestamp_millis(),
+        agent_id: "desktop".to_string(),
+        payload: Some(tunnel_client_frame::Payload::ApprovalResponse(
+            ApprovalResponse {
+                request_id: request_id.clone(),
+                approved,
+                reason: reason.clone(),
+                approved_by: "operator".to_string(),
+                responded_at_unix: chrono::Utc::now().timestamp(),
+            },
+        )),
+    };
+    let _ = state.tunnel_tx.send(frame).await;
+
     Ok(serde_json::json!({
         "requestId": request_id,
         "approved": approved,
         "reason": reason,
         "timestamp": chrono::Utc::now().to_rfc3339()
     }))
+}
+
+#[tauri::command]
+pub async fn execute_remote_cloud_command(
+    state: State<'_, AppState>,
+    display: u16,
+    command: String,
+    cwd: Option<String>,
+    background: Option<bool>,
+) -> Result<RemoteExecResult, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    let host_ip = std::env::var("EC2_AGENT_HOST")
+        .ok()
+        .filter(|h| !h.trim().is_empty())
+        .unwrap_or_else(|| "44.242.94.86".to_string());
+
+    let port: u16 = std::env::var("EC2_EXEC_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(3000);
+
+    let url = format!("http://{}:{}/exec", host_ip, port);
+    let clean_cmd = sanitize_bash_command(&command);
+    let is_bg = background.unwrap_or_else(|| clean_cmd.ends_with('&'));
+    let work_dir = cwd.unwrap_or_else(|| "/home/ubuntu".to_string());
+
+    let body = serde_json::json!({
+        "display": display,
+        "command": clean_cmd,
+        "cwd": work_dir,
+        "background": is_bg,
+    });
+
+    let mut request_builder = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .json(&body);
+
+    if let Ok(token) = std::env::var("CLOUD_GATEWAY_TOKEN") {
+        if !token.trim().is_empty() {
+            request_builder = request_builder.header("Authorization", format!("Bearer {}", token.trim()));
+        }
+    } else if let Ok(Some(token)) = state.keystore.get_secret("cloud_gateway_token").await {
+        if !token.as_str().trim().is_empty() {
+            request_builder = request_builder.header("Authorization", format!("Bearer {}", token.as_str().trim()));
+        }
+    }
+
+    let resp = request_builder
+        .send()
+        .await
+        .map_err(|e| format!("Failed to reach remote executor at {}: {}", url, e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Remote executor at {} returned HTTP status: {}",
+            url,
+            resp.status()
+        ));
+    }
+
+    let res = resp
+        .json::<RemoteExecResult>()
+        .await
+        .map_err(|e| format!("Failed to parse executor response: {}", e))?;
+
+    Ok(res)
+}
+
+#[tauri::command]
+pub async fn get_tunnel_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let is_connected = {
+        let lock = state.tunnel_handle.read().await;
+        lock.as_ref().map(|h| h.is_connected()).unwrap_or(false)
+    };
+    Ok(serde_json::json!({
+        "connected": is_connected,
+        "server_url": state.cloud_server_url,
+    }))
+}
+
+#[tauri::command]
+pub async fn get_dag_state(
+    state: State<'_, AppState>,
+    workstream_id: String,
+) -> Result<serde_json::Value, String> {
+    let map = state.dag_store.read().await;
+    if let Some(dag) = map.get(&workstream_id) {
+        Ok(serde_json::to_value(dag).map_err(|e| e.to_string())?)
+    } else {
+        Ok(serde_json::json!({
+            "id": workstream_id,
+            "nodes": {},
+            "dependencies": {}
+        }))
+    }
+}
+
+#[tauri::command]
+pub async fn update_dag_task_status(
+    state: State<'_, AppState>,
+    workstream_id: String,
+    task_id: String,
+    status: String,
+) -> Result<(), String> {
+    let task_status = match status.as_str() {
+        "ready" => frostfire_core::dag::TaskStatus::Ready,
+        "running" => frostfire_core::dag::TaskStatus::Running,
+        "completed" => frostfire_core::dag::TaskStatus::Completed,
+        "failed" => frostfire_core::dag::TaskStatus::Failed,
+        _ => frostfire_core::dag::TaskStatus::Pending,
+    };
+
+    {
+        let mut map = state.dag_store.write().await;
+        if let Some(dag) = map.get_mut(&workstream_id) {
+            let _ = dag.update_task_status(&task_id, task_status.clone());
+        }
+    }
+
+    let frame = TunnelClientFrame {
+        frame_id: format!("dag-sync-{}", uuid::Uuid::new_v4()),
+        timestamp_unix_ms: chrono::Utc::now().timestamp_millis(),
+        agent_id: "desktop".to_string(),
+        payload: Some(tunnel_client_frame::Payload::DagSync(
+            DagSyncFrame {
+                workstream_id,
+                task_id,
+                title: String::new(),
+                agent_id: String::new(),
+                status: match task_status {
+                    frostfire_core::dag::TaskStatus::Ready => 1,
+                    frostfire_core::dag::TaskStatus::Running => 2,
+                    frostfire_core::dag::TaskStatus::Completed => 3,
+                    frostfire_core::dag::TaskStatus::Failed => 4,
+                    _ => 0,
+                },
+                input_uris: vec![],
+                output_uris: vec![],
+                timestamp_unix_ms: chrono::Utc::now().timestamp_millis(),
+            },
+        )),
+    };
+    let _ = state.tunnel_tx.send(frame).await;
+    Ok(())
 }
 
 fn resolve_bedrock_key() -> Option<String> {
@@ -2108,7 +2785,11 @@ fn resolve_bedrock_key() -> Option<String> {
             for line in content.lines() {
                 let trimmed = line.trim();
                 if let Some(rest) = trimmed.strip_prefix("BEDROCK_API_KEY=") {
-                    let clean = rest.trim().trim_matches('"').trim_matches('\'').replace(['\r', '\n'], "");
+                    let clean = rest
+                        .trim()
+                        .trim_matches('"')
+                        .trim_matches('\'')
+                        .replace(['\r', '\n'], "");
                     if !clean.is_empty() {
                         return Some(clean);
                     }
@@ -2131,7 +2812,11 @@ fn resolve_gemini_key() -> Option<String> {
             for line in content.lines() {
                 let trimmed = line.trim();
                 if let Some(rest) = trimmed.strip_prefix("GEMINI_API_KEY=") {
-                    let clean = rest.trim().trim_matches('"').trim_matches('\'').replace(['\r', '\n'], "");
+                    let clean = rest
+                        .trim()
+                        .trim_matches('"')
+                        .trim_matches('\'')
+                        .replace(['\r', '\n'], "");
                     if !clean.is_empty() {
                         return Some(clean);
                     }
@@ -2149,15 +2834,32 @@ fn infer_agent_tool_calls(prompt: &str, display_number: u32) -> Vec<String> {
     let is_dev = matches!(display_number, 2 | 5 | 8);
     let is_qa = matches!(display_number, 3 | 6 | 9);
 
-    if p.contains("browser") || p.contains("chrome") || p.contains("web") || p.contains("http") || p.contains("github") || is_browser {
+    if p.contains("browser")
+        || p.contains("chrome")
+        || p.contains("web")
+        || p.contains("http")
+        || p.contains("github")
+        || is_browser
+    {
         tools.push("browser_navigate".to_string());
         tools.push("page_dom_inspect".to_string());
     }
-    if p.contains("run") || p.contains("terminal") || p.contains("bash") || p.contains("cmd") || p.contains("exec") || is_dev {
+    if p.contains("run")
+        || p.contains("terminal")
+        || p.contains("bash")
+        || p.contains("cmd")
+        || p.contains("exec")
+        || is_dev
+    {
         tools.push("bash_exec".to_string());
         tools.push("terminal_mux".to_string());
     }
-    if p.contains("test") || p.contains("verify") || p.contains("check") || p.contains("qa") || is_qa {
+    if p.contains("test")
+        || p.contains("verify")
+        || p.contains("check")
+        || p.contains("qa")
+        || is_qa
+    {
         tools.push("test_runner".to_string());
         tools.push("dom_assert".to_string());
     }
@@ -2228,7 +2930,9 @@ async fn execute_on_remote_pc(
     let host_ip = vm_host
         .filter(|h| !h.trim().is_empty())
         .map(|h| h.trim().to_string())
-        .unwrap_or_else(|| std::env::var("EC2_AGENT_HOST").unwrap_or_else(|_| "44.242.94.86".to_string()));
+        .unwrap_or_else(|| {
+            std::env::var("EC2_AGENT_HOST").unwrap_or_else(|_| "44.242.94.86".to_string())
+        });
     let port = exec_port.unwrap_or(3000);
     let url = format!("http://{}:{}/exec", host_ip, port);
 
@@ -2250,7 +2954,10 @@ async fn execute_on_remote_pc(
         .map_err(|e| format!("Failed to reach remote executor: {}", e))?;
 
     if !resp.status().is_success() {
-        return Err(format!("Remote executor returned status: {}", resp.status()));
+        return Err(format!(
+            "Remote executor returned status: {}",
+            resp.status()
+        ));
     }
 
     let res = resp
@@ -2346,7 +3053,10 @@ fn parse_action_response(text: &str) -> (Option<String>, String, Option<String>)
     (None, text.to_string(), None)
 }
 
-fn fallback_command_from_prompt(prompt: &str, display_number: u32) -> Option<(String, String, String)> {
+fn fallback_command_from_prompt(
+    prompt: &str,
+    display_number: u32,
+) -> Option<(String, String, String)> {
     let p = prompt.trim().to_lowercase();
 
     // 1. GUI Keys & Input
@@ -2379,9 +3089,15 @@ fn fallback_command_from_prompt(prompt: &str, display_number: u32) -> Option<(St
         ));
     }
     if p.starts_with("type ") {
-        let to_type = prompt.trim()[5..].trim().trim_matches('\'').trim_matches('"');
+        let to_type = prompt.trim()[5..]
+            .trim()
+            .trim_matches('\'')
+            .trim_matches('"');
         return Some((
-            format!("xdotool type --delay 12 '{}'", to_type.replace('\'', "'\\''")),
+            format!(
+                "xdotool type --delay 12 '{}'",
+                to_type.replace('\'', "'\\''")
+            ),
             format!("Typed \"{}\" into active window.", to_type),
             "gui_type".to_string(),
         ));
@@ -2437,9 +3153,20 @@ fn fallback_command_from_prompt(prompt: &str, display_number: u32) -> Option<(St
         || p.contains("launch messages")
         || p.contains("navigate to google messages")
         || p.contains("navigate to messages")
-        || (p.contains("google messages") && (p.contains("open") || p.contains("navigate") || p.contains("goto") || p.contains("launch")));
+        || (p.contains("google messages")
+            && (p.contains("open")
+                || p.contains("navigate")
+                || p.contains("goto")
+                || p.contains("launch")));
 
-    if p.contains("chrome") || p.contains("chome") || p.contains("browser") || is_open_messages || p.contains("open web") || p.contains("navigate to") || p.contains("navagate to") {
+    if p.contains("chrome")
+        || p.contains("chome")
+        || p.contains("browser")
+        || is_open_messages
+        || p.contains("open web")
+        || p.contains("navigate to")
+        || p.contains("navagate to")
+    {
         let url = if is_open_messages {
             "https://messages.google.com/web"
         } else if p.contains("youtube") {
@@ -2455,13 +3182,21 @@ fn fallback_command_from_prompt(prompt: &str, display_number: u32) -> Option<(St
         };
         return Some((
             format!("/usr/local/bin/chrome-launcher '{}' &", url),
-            format!("Navigating Google Chrome to {} on Display :{}.", url, display_number),
+            format!(
+                "Navigating Google Chrome to {} on Display :{}.",
+                url, display_number
+            ),
             "browser_launch".to_string(),
         ));
     }
 
     // 3. Terminal
-    if p.contains("open terminal") || p == "terminal" || p.contains("launch terminal") || p.contains("open bash") || p.contains("open shell") {
+    if p.contains("open terminal")
+        || p == "terminal"
+        || p.contains("launch terminal")
+        || p.contains("open bash")
+        || p.contains("open shell")
+    {
         return Some((
             "/usr/local/bin/terminal-launcher &".to_string(),
             format!("Launched XFCE Terminal on Display :{}.", display_number),
@@ -2483,13 +3218,21 @@ fn fallback_command_from_prompt(prompt: &str, display_number: u32) -> Option<(St
     {
         return Some((
             "/usr/local/bin/files-launcher &".to_string(),
-            format!("Launched Filesystem Manager on Display :{}.", display_number),
+            format!(
+                "Launched Filesystem Manager on Display :{}.",
+                display_number
+            ),
             "files_launch".to_string(),
         ));
     }
 
     // 4. File Management & Commands
-    if p == "ls" || p == "list files" || p.starts_with("ls ") || p.contains("list directory") || p.contains("show files") {
+    if p == "ls"
+        || p == "list files"
+        || p.starts_with("ls ")
+        || p.contains("list directory")
+        || p.contains("show files")
+    {
         let path = if p.contains("ls -") || p.starts_with("ls ") {
             prompt.trim()
         } else {
@@ -2539,7 +3282,11 @@ fn fallback_command_from_prompt(prompt: &str, display_number: u32) -> Option<(St
     }
 
     // 5. System commands & Ping
-    if p.starts_with("ping ") || p == "ping cloudflare dns" || p == "ping cloudflare" || p == "ping google" {
+    if p.starts_with("ping ")
+        || p == "ping cloudflare dns"
+        || p == "ping cloudflare"
+        || p == "ping google"
+    {
         let host = if p.contains("cloudflare") {
             "1.1.1.1"
         } else if p.contains("google") {
@@ -2558,8 +3305,19 @@ fn fallback_command_from_prompt(prompt: &str, display_number: u32) -> Option<(St
         ));
     }
 
-    if p == "pwd" || p == "df -h" || p == "free -m" || p == "uptime" || p == "whoami" || p.starts_with("ps ") || p == "top" {
-        let cmd = if p == "top" { "top -b -n 1 | head -n 20" } else { prompt.trim() };
+    if p == "pwd"
+        || p == "df -h"
+        || p == "free -m"
+        || p == "uptime"
+        || p == "whoami"
+        || p.starts_with("ps ")
+        || p == "top"
+    {
+        let cmd = if p == "top" {
+            "top -b -n 1 | head -n 20"
+        } else {
+            prompt.trim()
+        };
         return Some((
             cmd.to_string(),
             format!("Executed system command: `{}`", cmd),
@@ -2625,7 +3383,8 @@ fn load_skills_catalog() -> String {
 - purchases: E-commerce and procurement guardrails.
 - routines: Event-driven schedules, recurring cron tasks, and monitor digests.
 - send-on-behalf: Draft and send communications with human-in-the-loop review.
-- skill-authoring: Creating, changing, and deleting reusable agent skills.\n".to_string();
+- skill-authoring: Creating, changing, and deleting reusable agent skills.\n"
+            .to_string();
     }
 
     catalog
@@ -2673,7 +3432,8 @@ async fn query_bedrock_or_gemini(
         let p = prompt.to_string();
         move || {
             let sys_json = serde_json::json!([{"text": sys}]).to_string();
-            let msg_json = serde_json::json!([{"role": "user", "content": [{"text": p}]}]).to_string();
+            let msg_json =
+                serde_json::json!([{"role": "user", "content": [{"text": p}]}]).to_string();
             let mut cmd = std::process::Command::new("aws");
             #[cfg(windows)]
             {
@@ -2703,7 +3463,10 @@ async fn query_bedrock_or_gemini(
                 None
             }
         }
-    }).await.ok().flatten();
+    })
+    .await
+    .ok()
+    .flatten();
 
     if let Some(res) = cli_res {
         return Some(res);
@@ -2711,7 +3474,8 @@ async fn query_bedrock_or_gemini(
 
     // 2. Bedrock Converse API with Bearer Token
     if let Some(token) = resolve_bedrock_key() {
-        let bedrock_url = "https://bedrock-runtime.us-west-2.amazonaws.com/model/amazon.nova-lite-v1:0/converse";
+        let bedrock_url =
+            "https://bedrock-runtime.us-west-2.amazonaws.com/model/amazon.nova-lite-v1:0/converse";
         let body = serde_json::json!({
             "system": [{"text": system_prompt}],
             "messages": [{"role": "user", "content": [{"text": prompt}]}],
@@ -2747,10 +3511,7 @@ async fn query_bedrock_or_gemini(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={}",
             key
         );
-        let prompt_text = format!(
-            "{}\nUser request: {}",
-            system_prompt, prompt
-        );
+        let prompt_text = format!("{}\nUser request: {}", system_prompt, prompt);
         let body = serde_json::json!({
             "contents": [{
                 "parts": [{"text": prompt_text}]
@@ -2799,7 +3560,9 @@ pub async fn send_agent_turn(
     let model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3.8-flash".to_string());
 
     // 1. Resolve action + reply from LLM or fallback
-    let (mut command_to_run, mut reply, detected_tool) = if let Some((cmd, rep, tool)) = query_bedrock_or_gemini(&user_id, display_number, &prompt).await {
+    let (mut command_to_run, mut reply, detected_tool) = if let Some((cmd, rep, tool)) =
+        query_bedrock_or_gemini(&user_id, display_number, &prompt).await
+    {
         (cmd, rep, tool)
     } else {
         (None, String::new(), None)
@@ -2807,7 +3570,9 @@ pub async fn send_agent_turn(
 
     let mut tool_tag = detected_tool;
     if command_to_run.is_none() {
-        if let Some((fb_cmd, fb_reply, fb_tool)) = fallback_command_from_prompt(&prompt, display_number) {
+        if let Some((fb_cmd, fb_reply, fb_tool)) =
+            fallback_command_from_prompt(&prompt, display_number)
+        {
             command_to_run = Some(fb_cmd);
             if reply.is_empty() {
                 reply = fb_reply;
@@ -2838,7 +3603,11 @@ pub async fn send_agent_turn(
 
     // 2. Execute on remote PC if command is present
     if let Some(ref cmd) = command_to_run {
-        tracing::info!("🚀 [Agent Execution] Running on Display :{} -> {}", display_number, cmd);
+        tracing::info!(
+            "🚀 [Agent Execution] Running on Display :{} -> {}",
+            display_number,
+            cmd
+        );
         match execute_on_remote_pc(display_number, cmd, vm_host.as_deref(), exec_port).await {
             Ok(exec_res) => {
                 let mut output_str = String::new();
@@ -2897,7 +3666,10 @@ mod tests {
     fn test_parse_action_response_json() {
         let json_input = r#"{"command": "/usr/local/bin/chrome-launcher 'https://messages.google.com' &", "reply": "Opening Google Messages.", "tool": "browser"}"#;
         let (cmd, reply, tool) = parse_action_response(json_input);
-        assert_eq!(cmd.as_deref(), Some("/usr/local/bin/chrome-launcher 'https://messages.google.com' &"));
+        assert_eq!(
+            cmd.as_deref(),
+            Some("/usr/local/bin/chrome-launcher 'https://messages.google.com' &")
+        );
         assert_eq!(reply, "Opening Google Messages.");
         assert_eq!(tool.as_deref(), Some("browser"));
     }
@@ -2929,7 +3701,10 @@ mod tests {
         assert!(cmd.contains("chrome-launcher"));
         assert!(cmd.contains("messages.google.com"));
 
-        let res4 = fallback_command_from_prompt("can you send a message to cason saying we are running 10 mins late", 1);
+        let res4 = fallback_command_from_prompt(
+            "can you send a message to cason saying we are running 10 mins late",
+            1,
+        );
         assert!(res4.is_some());
         let (cmd4, rep4, tool4) = res4.unwrap();
         assert!(cmd4.contains("we are running 10 mins late"));
@@ -2982,7 +3757,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_send_agent_turn_execution() {
-        let res = send_agent_turn("user2".to_string(), 2, "check system status".to_string(), None, None).await;
+        let res = send_agent_turn(
+            "user2".to_string(),
+            2,
+            "check system status".to_string(),
+            None,
+            None,
+        )
+        .await;
         assert!(res.is_ok());
         let val = res.unwrap();
         assert_eq!(val["userId"], "user2");
@@ -2990,6 +3772,3 @@ mod tests {
         assert!(!val["reply"].as_str().unwrap().is_empty());
     }
 }
-
-
-

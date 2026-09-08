@@ -51,7 +51,8 @@ fn test_security_filter_strips_destructive() {
 fn test_workspace_jail_traversal_prevention() {
     use frostfire_engine::tools::{native_read_file, native_write_file, ToolError, WorkspaceJail};
 
-    let jail_dir = std::env::temp_dir().join(format!("frostfire_jail_test_{}", uuid::Uuid::new_v4()));
+    let jail_dir =
+        std::env::temp_dir().join(format!("frostfire_jail_test_{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&jail_dir).unwrap();
     let jail = WorkspaceJail::new(&jail_dir);
 
@@ -93,7 +94,10 @@ fn test_jit_tool_filtering_token_budget_under_500() {
     let p1_names: Vec<String> = p1_tools.iter().map(|t| t.name.clone()).collect();
     assert_eq!(p1_names, vec!["read_file", "list_dir"]);
     let p1_json = serde_json::to_string(&p1_tools).unwrap();
-    assert!(p1_json.len() < 1000, "Manifest schema must be compact and under 500 tokens");
+    assert!(
+        p1_json.len() < 1000,
+        "Manifest schema must be compact and under 500 tokens"
+    );
 
     // Phase 4: Prototype (Fast SME gets write tools, Lead gets verification tools)
     let sme_p4_tools = JitToolManager::get_tools_for_phase(SprintPhase::Prototype, false);

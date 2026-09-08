@@ -1,21 +1,22 @@
+use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use clap::{Parser, Subcommand};
 use tracing::{error, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use frostfire_daemon::{AppConfig, DaemonService};
-use frostfire_exec::{AtomicPatchApplicator, PatchOptions, PtyMultiplexer, SpawnOptions, WorkspaceJail};
+use frostfire_exec::{
+    AtomicPatchApplicator, PatchOptions, PtyMultiplexer, SpawnOptions, WorkspaceJail,
+};
 use frostfire_proto::tunnel::{
-    self, ApplyPatch, ApprovalRequest, ExecCommand, McpInvokeRequest,
-    TunnelServerFrame, UserPrompt,
+    self, ApplyPatch, ApprovalRequest, ExecCommand, McpInvokeRequest, TunnelServerFrame, UserPrompt,
 };
 use frostfire_security::{CredentialBroker, KeyStore, MerkleAuditLedger, OAuthSession};
 use frostfire_tunnel::{MockGatewayServer, TunnelClient, TunnelConfig};
 
-mod ui;
 pub mod browser;
+mod ui;
 
 #[derive(Parser)]
 #[command(name = "frostfire")]
@@ -165,22 +166,25 @@ async fn main() -> Result<(), anyhow::Error> {
                         expires_at_unix: chrono::Utc::now().timestamp() + 86400 * 30,
                     };
                     broker.save_oauth_session(&session)?;
-                    println!("✅ Authentication successful! Credentials sealed in hardware keystore.");
-                    println!("   All local and cloud agents have unified access under: {}", account);
+                    println!(
+                        "✅ Authentication successful! Credentials sealed in hardware keystore."
+                    );
+                    println!(
+                        "   All local and cloud agents have unified access under: {}",
+                        account
+                    );
                 }
-                AuthCommands::Status => {
-                    match broker.get_oauth_session()? {
-                        Some(s) => {
-                            println!("✅ Active OAuth Session Found:");
-                            println!("   Account:    {}", s.account_id);
-                            println!("   Token Type: {}", s.token_type);
-                            println!("   Expires:    {} (unix timestamp)", s.expires_at_unix);
-                        }
-                        None => {
-                            println!("⚠️ No active OAuth session found in keystore. Run 'frostfire auth login' to authenticate.");
-                        }
+                AuthCommands::Status => match broker.get_oauth_session()? {
+                    Some(s) => {
+                        println!("✅ Active OAuth Session Found:");
+                        println!("   Account:    {}", s.account_id);
+                        println!("   Token Type: {}", s.token_type);
+                        println!("   Expires:    {} (unix timestamp)", s.expires_at_unix);
                     }
-                }
+                    None => {
+                        println!("⚠️ No active OAuth session found in keystore. Run 'frostfire auth login' to authenticate.");
+                    }
+                },
                 AuthCommands::ShowKeys => {
                     let keys = keystore.list()?;
                     println!("🔑 Sealed Keystore Entries:");
@@ -203,7 +207,11 @@ async fn main() -> Result<(), anyhow::Error> {
             }
         }
 
-        Commands::Prompt { text, dev, server_url } => {
+        Commands::Prompt {
+            text,
+            dev,
+            server_url,
+        } => {
             let (_mock_server, target_url) = if dev {
                 let s = MockGatewayServer::start().await?;
                 let url = s.url();
@@ -219,7 +227,10 @@ async fn main() -> Result<(), anyhow::Error> {
             let mut client = match TunnelClient::connect(tunnel_cfg).await {
                 Ok(c) => c,
                 Err(e) => {
-                    eprintln!("❌ Failed to connect to Cloud Gateway at {}: {}", target_url, e);
+                    eprintln!(
+                        "❌ Failed to connect to Cloud Gateway at {}: {}",
+                        target_url, e
+                    );
                     eprintln!("   Hint: Ensure 'frostfire-gateway' is running on the Cloud side, or run with '--dev' for offline mode.");
                     return Ok(());
                 }
@@ -236,7 +247,9 @@ async fn main() -> Result<(), anyhow::Error> {
                 frame_id: uuid::Uuid::new_v4().to_string(),
                 agent_id: "local-cli-agent".into(),
                 timestamp_unix_ms: chrono::Utc::now().timestamp_millis(),
-                payload: Some(frostfire_proto::tunnel::tunnel_client_frame::Payload::UserPrompt(prompt)),
+                payload: Some(
+                    frostfire_proto::tunnel::tunnel_client_frame::Payload::UserPrompt(prompt),
+                ),
             };
 
             println!("📤 User Prompt: \"{}\"", text);
@@ -253,17 +266,20 @@ async fn main() -> Result<(), anyhow::Error> {
 
             let turn_timeout = tokio::time::Instant::now() + Duration::from_secs(60);
             while tokio::time::Instant::now() < turn_timeout {
-                let server_frame = match tokio::time::timeout(Duration::from_secs(15), client.recv()).await {
-                    Ok(Some(f)) => f,
-                    Ok(None) => break,
-                    Err(_) => {
-                        break;
-                    }
-                };
+                let server_frame =
+                    match tokio::time::timeout(Duration::from_secs(15), client.recv()).await {
+                        Ok(Some(f)) => f,
+                        Ok(None) => break,
+                        Err(_) => {
+                            break;
+                        }
+                    };
 
                 if let Some(payload) = server_frame.payload {
                     match payload {
-                        frostfire_proto::tunnel::tunnel_server_frame::Payload::AgentMessage(msg) => {
+                        frostfire_proto::tunnel::tunnel_server_frame::Payload::AgentMessage(
+                            msg,
+                        ) => {
                             if !msg.content.trim().is_empty() {
                                 println!("\n🤖 Swarm Response:\n{}", msg.content);
                             }
@@ -277,15 +293,26 @@ async fn main() -> Result<(), anyhow::Error> {
                         frostfire_proto::tunnel::tunnel_server_frame::Payload::ExecCommand(cmd) => {
                             #[cfg(windows)]
                             let (final_command, final_args) = if cmd.command == "ls" {
-                                ("cmd.exe".to_string(), vec!["/c".to_string(), "dir".to_string()])
+                                (
+                                    "cmd.exe".to_string(),
+                                    vec!["/c".to_string(), "dir".to_string()],
+                                )
                             } else {
                                 (cmd.command.clone(), cmd.args.clone())
                             };
                             #[cfg(not(windows))]
-                            let (final_command, final_args) = (cmd.command.clone(), cmd.args.clone());
+                            let (final_command, final_args) =
+                                (cmd.command.clone(), cmd.args.clone());
 
-                            println!("\n▶️ [Virtual PTY] Executing: {} {:?}", final_command, final_args);
-                            let cwd_path = if cmd.working_dir.is_empty() { None } else { Some(std::path::Path::new(&cmd.working_dir)) };
+                            println!(
+                                "\n▶️ [Virtual PTY] Executing: {} {:?}",
+                                final_command, final_args
+                            );
+                            let cwd_path = if cmd.working_dir.is_empty() {
+                                None
+                            } else {
+                                Some(std::path::Path::new(&cmd.working_dir))
+                            };
                             let target_cwd = jail.validate_cwd(cwd_path)?;
 
                             let mut spawn_opts = SpawnOptions::new(&final_command)
@@ -293,7 +320,8 @@ async fn main() -> Result<(), anyhow::Error> {
                                 .cwd(target_cwd)
                                 .pty(cmd.pty);
                             if cmd.pty && cmd.pty_rows > 0 && cmd.pty_cols > 0 {
-                                spawn_opts = spawn_opts.dimensions(cmd.pty_rows as u16, cmd.pty_cols as u16);
+                                spawn_opts =
+                                    spawn_opts.dimensions(cmd.pty_rows as u16, cmd.pty_cols as u16);
                             }
 
                             let mut rx = pty_mux.spawn_screen("cli-screen", spawn_opts)?;
@@ -324,7 +352,9 @@ async fn main() -> Result<(), anyhow::Error> {
                             };
                             let _ = client.send(out_frame).await;
                         }
-                        frostfire_proto::tunnel::tunnel_server_frame::Payload::ApplyPatch(patch) => {
+                        frostfire_proto::tunnel::tunnel_server_frame::Payload::ApplyPatch(
+                            patch,
+                        ) => {
                             println!("\n▶️ [Atomic Patch] Applying diff to: {}", patch.file_path);
                             let target_path = jail.resolve_path(&patch.file_path)?;
                             let opts = PatchOptions::new().dry_run(patch.dry_run);
@@ -332,7 +362,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
                             let (success, err_msg, lines_added, lines_removed) = match result {
                                 Ok(res) => {
-                                    ledger.append("local-cli-agent", "apply_patch", patch.diff.as_bytes())?;
+                                    ledger.append(
+                                        "local-cli-agent",
+                                        "apply_patch",
+                                        patch.diff.as_bytes(),
+                                    )?;
                                     println!(
                                         "   ✓ Patch applied ({} lines added, {} lines removed). Merkle ledger updated.",
                                         res.lines_added, res.lines_removed
@@ -373,7 +407,13 @@ async fn main() -> Result<(), anyhow::Error> {
             }
         }
 
-        Commands::Ui { port, host, vnc_host, server_url, no_open } => {
+        Commands::Ui {
+            port,
+            host,
+            vnc_host,
+            server_url,
+            no_open,
+        } => {
             let target_url = server_url.unwrap_or_else(|| {
                 if config.daemon.server_url.contains("gateway.frostfire.cloud") {
                     "http://127.0.0.1:50051".to_string()
@@ -381,7 +421,15 @@ async fn main() -> Result<(), anyhow::Error> {
                     config.daemon.server_url.clone()
                 }
             });
-            ui::start_ui_server(&host, port, target_url, workspace_root, no_open, Some(vnc_host)).await?;
+            ui::start_ui_server(
+                &host,
+                port,
+                target_url,
+                workspace_root,
+                no_open,
+                Some(vnc_host),
+            )
+            .await?;
         }
 
         Commands::Daemon { server_url } => {
@@ -476,7 +524,9 @@ async fn main() -> Result<(), anyhow::Error> {
                 tokio::time::sleep(Duration::from_millis(1000)).await;
 
                 // Step 2: Test Atomic Patch Application with Canonical Jail validation
-                println!("🧪 Test 2: Testing atomic patch application with canonical path jailing...");
+                println!(
+                    "🧪 Test 2: Testing atomic patch application with canonical path jailing..."
+                );
                 let jail = WorkspaceJail::new(&workspace_root)?;
                 let test_file = jail.resolve_path("test_patch.txt")?;
                 std::fs::write(&test_file, "Line 1\nLine 2\nLine 3\n")?;
@@ -536,7 +586,9 @@ async fn main() -> Result<(), anyhow::Error> {
                 let approval_frame = TunnelServerFrame {
                     frame_id: uuid::Uuid::new_v4().to_string(),
                     timestamp_unix_ms: chrono::Utc::now().timestamp_millis(),
-                    payload: Some(tunnel::tunnel_server_frame::Payload::ApprovalRequest(approval)),
+                    payload: Some(tunnel::tunnel_server_frame::Payload::ApprovalRequest(
+                        approval,
+                    )),
                 };
 
                 server.send_server_frame(approval_frame).await?;
@@ -544,7 +596,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
                 // Step 5: Verify Frames Received
                 let received = server.recorded_frames().await;
-                println!("📊 Received {} client frames back through the tunnel.", received.len());
+                println!(
+                    "📊 Received {} client frames back through the tunnel.",
+                    received.len()
+                );
                 assert!(!received.is_empty(), "Expected client frames from daemon");
 
                 println!("\n🎉 ALL TESTS PASSED! Closed-loop verification successful.");
@@ -557,9 +612,20 @@ async fn main() -> Result<(), anyhow::Error> {
         Commands::Doctor => {
             println!("🔍 Frostfire System Doctor Diagnostics\n");
 
-            println!("🖥️  OS:           {} {}", std::env::consts::OS, std::env::consts::ARCH);
+            println!(
+                "🖥️  OS:           {} {}",
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            );
             println!("📂 Workspace:    {:?}", workspace_root);
-            println!("📄 Config File:  {}", if workspace_root.join(".frostfire.toml").exists() { "Present (.frostfire.toml)" } else { "Not found (using defaults)" });
+            println!(
+                "📄 Config File:  {}",
+                if workspace_root.join(".frostfire.toml").exists() {
+                    "Present (.frostfire.toml)"
+                } else {
+                    "Not found (using defaults)"
+                }
+            );
 
             // Keystore check
             #[cfg(target_os = "windows")]
@@ -574,14 +640,22 @@ async fn main() -> Result<(), anyhow::Error> {
             // Check git
             let git_check = std::process::Command::new("git").arg("--version").output();
             match git_check {
-                Ok(out) => println!("📦 Git:          {}", String::from_utf8_lossy(&out.stdout).trim()),
+                Ok(out) => println!(
+                    "📦 Git:          {}",
+                    String::from_utf8_lossy(&out.stdout).trim()
+                ),
                 Err(_) => println!("❌ Git:          Not found in PATH"),
             }
 
             // Check cargo
-            let cargo_check = std::process::Command::new("cargo").arg("--version").output();
+            let cargo_check = std::process::Command::new("cargo")
+                .arg("--version")
+                .output();
             match cargo_check {
-                Ok(out) => println!("🦀 Cargo:        {}", String::from_utf8_lossy(&out.stdout).trim()),
+                Ok(out) => println!(
+                    "🦀 Cargo:        {}",
+                    String::from_utf8_lossy(&out.stdout).trim()
+                ),
                 Err(_) => println!("❌ Cargo:        Not found in PATH"),
             }
 
@@ -602,8 +676,18 @@ async fn main() -> Result<(), anyhow::Error> {
             let merkle_root = ledger.compute_merkle_root()?;
 
             println!("📊 Total Entries:  {}", report.verified_count);
-            println!("🌳 Merkle Root:    {}", merkle_root.unwrap_or_else(|| "Genesis".into()));
-            println!("🛡️  Tamper Status:  {}", if report.is_valid { "VERIFIED (Cryptographically intact)" } else { "TAMPERED / INVALID" });
+            println!(
+                "🌳 Merkle Root:    {}",
+                merkle_root.unwrap_or_else(|| "Genesis".into())
+            );
+            println!(
+                "🛡️  Tamper Status:  {}",
+                if report.is_valid {
+                    "VERIFIED (Cryptographically intact)"
+                } else {
+                    "TAMPERED / INVALID"
+                }
+            );
 
             if let Some(violation) = report.violation {
                 println!("\n⚠️ Violation detected: {:?}", violation);

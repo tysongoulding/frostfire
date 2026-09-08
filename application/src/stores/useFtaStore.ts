@@ -15,17 +15,10 @@ interface FtaStore {
 }
 
 export const useFtaStore = create<FtaStore>((set) => ({
-  hoursSaved: 42.5,
+  hoursSaved: 0,
   blendedHourlyRate: 85.0, // Standard blended knowledge worker rate $/hr
-  userRating: 5,
-  calibrationHistory: [
-    {
-      timestamp: new Date().toLocaleTimeString(),
-      workstreamId: "ws-demo-1hour",
-      hours: 4.5,
-      rating: 5,
-    },
-  ],
+  userRating: null,
+  calibrationHistory: [],
 
   recordCalibration: (workstreamId, rating, hours) =>
     set((state) => ({

@@ -12,82 +12,22 @@ interface MarketplaceModalProps {
   onClose: () => void;
 }
 
-const FEATURED_BOTS = [
-  {
-    id: 'f1',
-    creator: "Lauren Tan's",
-    name: 'dr eggbot',
-    accent: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
-  },
-  {
-    id: 'f2',
-    creator: "Lenny Rachitsky's",
-    name: 'Overheard',
-    accent: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  },
-  {
-    id: 'f3',
-    creator: "Claire Vo's",
-    name: 'Tradbot',
-    accent: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  },
-  {
-    id: 'f4',
-    creator: "Eric Zakariasson's",
-    name: 'Projects Manager',
-    accent: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
-  },
-];
+interface BotItem {
+  id: string;
+  creator?: string;
+  name: string;
+  author?: string;
+  desc?: string;
+  accent: string;
+}
 
-const BOT_LIST = [
-  {
-    id: 'b1',
-    name: 'dr eggbot',
-    author: 'Lauren Tan',
-    desc: 'Designs high-quality Frostfire agents. Asks a few preferences and exports configured blueprints.',
-    accent: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
-  },
-  {
-    id: 'b2',
-    name: 'Projects Manager',
-    author: 'Eric Zakariasson',
-    desc: 'Runs your team&apos;s projects from Notion: one row per project, synced to GitHub sprints.',
-    accent: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
-  },
-  {
-    id: 'b3',
-    name: 'Outbound Prospecting',
-    author: 'Krista Letz',
-    desc: 'Finds prospects that match your ideal customer, crawls LinkedIn signals, and writes personalized intros.',
-    accent: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-  },
-  {
-    id: 'b4',
-    name: 'SEO & AEO Desk',
-    author: 'Adam Tanguay',
-    desc: 'Turns your keywords into content ideas and writers briefs optimized for answer engines.',
-    accent: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
-  },
-  {
-    id: 'b5',
-    name: 'Haggle Bot',
-    author: 'Daniel Gartsbein',
-    desc: 'Inventories your SaaS spend from Ramp and bills, flagging duplicate seats and negotiating contracts.',
-    accent: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  },
-  {
-    id: 'b6',
-    name: 'Recruiting Coordinator',
-    author: 'Tommy Hansen',
-    desc: 'Schedules interview loops, preps your interviewers with scorecards, and drafts feedback summaries.',
-    accent: 'bg-sky-500/20 text-sky-400 border-sky-500/30',
-  },
-];
 
 export const MarketplaceModal: React.FC<MarketplaceModalProps> = ({ isOpen, onClose }) => {
   const [tab, setTab] = useState<'plugins' | 'bots'>('bots');
   const [activeCategory, setActiveCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [featuredBots] = useState<BotItem[]>([]);
+  const [botList] = useState<BotItem[]>([]);
 
   if (!isOpen) return null;
 
@@ -100,6 +40,12 @@ export const MarketplaceModal: React.FC<MarketplaceModalProps> = ({ isOpen, onCl
     'Design',
     'Personal',
   ];
+
+  const filteredBots = botList.filter(
+    (b) =>
+      b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (b.author && b.author.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -156,26 +102,34 @@ export const MarketplaceModal: React.FC<MarketplaceModalProps> = ({ isOpen, onCl
             <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">
               Featured
             </span>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              {FEATURED_BOTS.map((bot) => (
-                <div
-                  key={bot.id}
-                  className="p-3 rounded-xl border border-theme-border bg-theme-bg/60 hover:bg-theme-bg transition-colors flex flex-col items-center text-center cursor-pointer group"
-                >
+            {featuredBots.length === 0 ? (
+              <div className="py-6 px-4 border border-dashed border-theme-border rounded-xl text-center text-theme-text-muted">
+                No featured bots available in registry.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {featuredBots.map((bot) => (
                   <div
-                    className={`w-12 h-12 rounded-2xl flex items-center justify-center border mb-2 shadow-xs group-hover:scale-105 transition-transform ${bot.accent}`}
+                    key={bot.id}
+                    className="p-3 rounded-xl border border-theme-border bg-theme-bg/60 hover:bg-theme-bg transition-colors flex flex-col items-center text-center cursor-pointer group"
                   >
-                    <Bot className="w-6 h-6" />
+                    <div
+                      className={`w-12 h-12 rounded-2xl flex items-center justify-center border mb-2 shadow-xs group-hover:scale-105 transition-transform ${bot.accent}`}
+                    >
+                      <Bot className="w-6 h-6" />
+                    </div>
+                    {bot.creator && (
+                      <span className="text-[10px] text-theme-text-muted block truncate w-full">
+                        {bot.creator}
+                      </span>
+                    )}
+                    <span className="font-bold text-xs text-theme-text-primary block truncate w-full">
+                      {bot.name}
+                    </span>
                   </div>
-                  <span className="text-[10px] text-theme-text-muted block truncate w-full">
-                    {bot.creator}
-                  </span>
-                  <span className="font-bold text-xs text-theme-text-primary block truncate w-full">
-                    {bot.name}
-                  </span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Search Box */}
@@ -221,37 +175,43 @@ export const MarketplaceModal: React.FC<MarketplaceModalProps> = ({ isOpen, onCl
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {BOT_LIST.filter(
-                (b) =>
-                  b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  b.author.toLowerCase().includes(searchQuery.toLowerCase())
-              ).map((bot) => (
-                <div
-                  key={bot.id}
-                  className="p-3 rounded-xl border border-theme-border bg-theme-bg/60 hover:bg-theme-bg transition-all flex items-start gap-3 cursor-pointer"
-                >
+            {filteredBots.length === 0 ? (
+              <div className="py-8 px-4 border border-dashed border-theme-border rounded-xl text-center text-theme-text-muted">
+                No bots available in registry.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {filteredBots.map((bot) => (
                   <div
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center border shrink-0 mt-0.5 ${bot.accent}`}
+                    key={bot.id}
+                    className="p-3 rounded-xl border border-theme-border bg-theme-bg/60 hover:bg-theme-bg transition-all flex items-start gap-3 cursor-pointer"
                   >
-                    <Bot className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="font-bold text-xs text-theme-text-primary truncate">
-                        {bot.name}
-                      </span>
-                      <span className="text-[10px] text-theme-text-muted truncate">
-                        by {bot.author}
-                      </span>
+                    <div
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center border shrink-0 mt-0.5 ${bot.accent}`}
+                    >
+                      <Bot className="w-4 h-4" />
                     </div>
-                    <p className="text-[11px] text-theme-text-muted line-clamp-2 mt-0.5 leading-relaxed">
-                      {bot.desc}
-                    </p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="font-bold text-xs text-theme-text-primary truncate">
+                          {bot.name}
+                        </span>
+                        {bot.author && (
+                          <span className="text-[10px] text-theme-text-muted truncate">
+                            by {bot.author}
+                          </span>
+                        )}
+                      </div>
+                      {bot.desc && (
+                        <p className="text-[11px] text-theme-text-muted line-clamp-2 mt-0.5 leading-relaxed">
+                          {bot.desc}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

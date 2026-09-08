@@ -48,7 +48,10 @@ impl SecurityFilter {
 
     pub fn is_allowed(&self, tool_name: &str) -> bool {
         let lower = tool_name.to_lowercase();
-        !self.forbidden_patterns.iter().any(|pattern| lower.contains(pattern))
+        !self
+            .forbidden_patterns
+            .iter()
+            .any(|pattern| lower.contains(pattern))
     }
 
     pub fn filter_tools(&self, tools: Vec<ToolDefinition>) -> Vec<ToolDefinition> {
@@ -86,7 +89,9 @@ pub struct McpConnector {
 
 impl McpConnector {
     pub fn new() -> Self {
-        Self { servers: Vec::new() }
+        Self {
+            servers: Vec::new(),
+        }
     }
 
     pub fn register_server(&mut self, config: McpServerConfig) {
@@ -189,8 +194,7 @@ pub fn native_write_file(
 
 pub fn native_list_dir(jail: &WorkspaceJail, path: &str) -> Result<Vec<String>, ToolError> {
     let safe_path = jail.validate_path(path)?;
-    let entries =
-        std::fs::read_dir(&safe_path).map_err(|e| ToolError::IoError(e.to_string()))?;
+    let entries = std::fs::read_dir(&safe_path).map_err(|e| ToolError::IoError(e.to_string()))?;
     let mut names = Vec::new();
     for entry in entries.flatten() {
         if let Ok(name) = entry.file_name().into_string() {

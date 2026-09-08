@@ -7,13 +7,13 @@
 
 pub mod diff;
 pub mod jail;
-pub mod pty_mux;
-pub mod worktree;
-pub mod semantic_chunker;
 pub mod process_inspector;
+pub mod pty_mux;
+pub mod semantic_chunker;
+pub mod worktree;
 
-pub use semantic_chunker::{CodeChunk, SemanticChunker};
 pub use process_inspector::{InspectorError, ProcessEntry, ProcessInspector};
+pub use semantic_chunker::{CodeChunk, SemanticChunker};
 
 pub use diff::{
     compute_sha256, AtomicPatchApplicator, DiffError, LineReplacement, PatchApplyResult,
@@ -32,7 +32,8 @@ mod integration_tests {
 
     #[test]
     fn test_jail_containment_and_traversal_attacks() {
-        let temp_dir = std::env::temp_dir().join(format!("frostfire_jail_integ_{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("frostfire_jail_integ_{}", uuid::Uuid::new_v4()));
         let workspace = temp_dir.join("project_root");
         fs::create_dir_all(&workspace).unwrap();
 
@@ -70,7 +71,8 @@ mod integration_tests {
 
     #[test]
     fn test_atomic_patch_replacement_guarantee() {
-        let temp_dir = std::env::temp_dir().join(format!("frostfire_patch_integ_{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("frostfire_patch_integ_{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&temp_dir).unwrap();
 
         let file_path = temp_dir.join("config.toml");

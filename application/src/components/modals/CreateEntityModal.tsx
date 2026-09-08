@@ -40,23 +40,13 @@ interface CreateEntityModalProps {
   ) => void;
 }
 
-const DEFAULT_AGENTS: AgentOption[] = [
-  { id: 'netassistant', name: 'NetAssistant', role: 'Executive Intelligence' },
-  { id: 'netcontroller', name: 'NetController', role: 'Chief of Staff' },
-  { id: 'netops', name: 'NetOps', role: 'Lead Network Engineer' },
-  { id: 'netdoctor', name: 'NetDoctor', role: 'Principal Network Diagnostics' },
-  { id: 'nettrainer', name: 'NetTrainer', role: 'Chief AI Foundational Architect' },
-  { id: 'netsentry', name: 'NetSentry', role: 'Lead Cybersecurity & Security' },
-  { id: 'netaws', name: 'NetAWS', role: 'AWS Infrastructure, Networking' },
-];
-
 export const CreateEntityModal: React.FC<CreateEntityModalProps> = ({
   isOpen,
   onClose,
   entityType,
   mode = 'create',
   initialData,
-  availableAgents = DEFAULT_AGENTS,
+  availableAgents = [],
   onCreate,
   onSave,
 }) => {

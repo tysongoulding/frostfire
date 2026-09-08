@@ -31,6 +31,8 @@ message TunnelServerFrame {
     TeachSessionCommand teach_command = 25;
     TeachSessionResponse teach_response = 26;
     UserPrompt user_prompt = 27;
+    BlackboardSyncFrame blackboard_sync = 28;
+    DagSyncFrame dag_sync = 29;
   }
 }
 
@@ -59,6 +61,8 @@ message TunnelClientFrame {
     TeachSessionCommand teach_command = 25;
     TeachSessionResponse teach_response = 26;
     AgentMessage agent_message = 27;
+    BlackboardSyncFrame blackboard_sync = 28;
+    DagSyncFrame dag_sync = 29;
   }
 }
 
@@ -224,4 +228,41 @@ message TeachSessionResponse {
   string sop_markdown = 3;
   string video_path = 4;
   string error_message = 5;
+}
+
+// Blackboard artifact synchronization payload
+message BlackboardSyncFrame {
+  string uri = 1;
+  string author_id = 2;
+  string title = 3;
+  string content = 4;
+  string mime_type = 5;
+  uint32 version = 6;
+  string hash = 7;
+  int64 timestamp_unix_ms = 8;
+  enum Action {
+    PUBLISHED = 0;
+    UPDATED = 1;
+    FROZEN = 2;
+  }
+  Action action = 9;
+}
+
+// Workstream DAG task synchronization payload
+message DagSyncFrame {
+  string workstream_id = 1;
+  string task_id = 2;
+  string title = 3;
+  string agent_id = 4;
+  enum TaskState {
+    PENDING = 0;
+    READY = 1;
+    RUNNING = 2;
+    COMPLETED = 3;
+    FAILED = 4;
+  }
+  TaskState status = 5;
+  repeated string input_uris = 6;
+  repeated string output_uris = 7;
+  int64 timestamp_unix_ms = 8;
 }

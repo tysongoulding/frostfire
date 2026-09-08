@@ -1,6 +1,6 @@
 [project]
 name = "frostfire"
-version = "0.1.0"
+version = "0.3.0"
 root_jail = true
 allowed_paths = ["."]
 

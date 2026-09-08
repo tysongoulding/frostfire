@@ -1,9 +1,9 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use frostfire_proto::tunnel::{
     self, AgentMessage, ApplyPatch, ExecCommand, McpInvokeRequest, TunnelServerFrame, UserPrompt,
 };
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing::info;
 
 use crate::gemini::{ChatMessage, GeminiClient, GeminiTurnResult};
@@ -113,12 +113,20 @@ impl AgentTurnEngine {
 
             match tc.name.as_str() {
                 "exec_command" => {
-                    let cmd_str = tc.args.get("command").and_then(|v| v.as_str()).unwrap_or("dir");
+                    let cmd_str = tc
+                        .args
+                        .get("command")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("dir");
                     let args_list: Vec<String> = tc
                         .args
                         .get("args")
                         .and_then(|v| v.as_array())
-                        .map(|arr| arr.iter().filter_map(|s| s.as_str().map(String::from)).collect())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|s| s.as_str().map(String::from))
+                                .collect()
+                        })
                         .unwrap_or_default();
 
                     let exec = ExecCommand {
@@ -140,7 +148,11 @@ impl AgentTurnEngine {
                     });
                 }
                 "apply_patch" => {
-                    let file_path = tc.args.get("file_path").and_then(|v| v.as_str()).unwrap_or("output.txt");
+                    let file_path = tc
+                        .args
+                        .get("file_path")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("output.txt");
                     let diff = tc.args.get("diff").and_then(|v| v.as_str()).unwrap_or("");
 
                     let patch = ApplyPatch {
@@ -187,7 +199,9 @@ impl AgentTurnEngine {
         server_frames.push(TunnelServerFrame {
             frame_id: uuid::Uuid::new_v4().to_string(),
             timestamp_unix_ms: chrono::Utc::now().timestamp_millis(),
-            payload: Some(tunnel::tunnel_server_frame::Payload::AgentMessage(agent_message.clone())),
+            payload: Some(tunnel::tunnel_server_frame::Payload::AgentMessage(
+                agent_message.clone(),
+            )),
         });
 
         Ok(TurnExecutionPlan {

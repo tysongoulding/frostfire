@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
 use crate::keystore::{KeyStore, KeyStoreError};
@@ -61,7 +61,11 @@ pub struct CredentialBinding {
 }
 
 impl CredentialBinding {
-    pub fn new(handle: impl Into<String>, keystore_key: impl Into<String>, actions: &[BrokerAction]) -> Self {
+    pub fn new(
+        handle: impl Into<String>,
+        keystore_key: impl Into<String>,
+        actions: &[BrokerAction],
+    ) -> Self {
         let mut allowed = HashSet::new();
         for action in actions {
             allowed.insert(*action);
@@ -124,8 +128,8 @@ impl CredentialBroker {
 
     /// Save an OAuth 2.0 PKCE session securely into the underlying hardware or encrypted keystore.
     pub fn save_oauth_session(&self, session: &OAuthSession) -> Result<(), BrokerError> {
-        let json = serde_json::to_vec(session)
-            .map_err(|e| BrokerError::InvalidEncoding(e.to_string()))?;
+        let json =
+            serde_json::to_vec(session).map_err(|e| BrokerError::InvalidEncoding(e.to_string()))?;
         self.keystore.set(Self::OAUTH_KEY, &json)?;
         Ok(())
     }
@@ -156,7 +160,10 @@ impl CredentialBroker {
         allowed_actions: &[BrokerAction],
     ) -> Result<(), BrokerError> {
         let binding = CredentialBinding::new(handle, keystore_key, allowed_actions);
-        let mut map = self.bindings.write().map_err(|_| BrokerError::LockError("Failed to acquire write lock".into()))?;
+        let mut map = self
+            .bindings
+            .write()
+            .map_err(|_| BrokerError::LockError("Failed to acquire write lock".into()))?;
         map.insert(binding.handle.clone(), binding);
         Ok(())
     }
@@ -169,16 +176,27 @@ impl CredentialBroker {
         allowed_actions: &[BrokerAction],
         allowed_hosts: Vec<String>,
     ) -> Result<(), BrokerError> {
-        let binding = CredentialBinding::new(handle, keystore_key, allowed_actions).with_hosts(allowed_hosts);
-        let mut map = self.bindings.write().map_err(|_| BrokerError::LockError("Failed to acquire write lock".into()))?;
+        let binding =
+            CredentialBinding::new(handle, keystore_key, allowed_actions).with_hosts(allowed_hosts);
+        let mut map = self
+            .bindings
+            .write()
+            .map_err(|_| BrokerError::LockError("Failed to acquire write lock".into()))?;
         map.insert(binding.handle.clone(), binding);
         Ok(())
     }
 
     /// Retrieve the secret associated with a handle after verifying permitted actions.
-    fn resolve_secret(&self, handle: &str, action: BrokerAction) -> Result<(CredentialBinding, Vec<u8>), BrokerError> {
+    fn resolve_secret(
+        &self,
+        handle: &str,
+        action: BrokerAction,
+    ) -> Result<(CredentialBinding, Vec<u8>), BrokerError> {
         let binding = {
-            let map = self.bindings.read().map_err(|_| BrokerError::LockError("Failed to acquire read lock".into()))?;
+            let map = self
+                .bindings
+                .read()
+                .map_err(|_| BrokerError::LockError("Failed to acquire read lock".into()))?;
             map.get(handle)
                 .cloned()
                 .ok_or_else(|| BrokerError::HandleNotFound(handle.to_string()))?
@@ -191,13 +209,12 @@ impl CredentialBroker {
             });
         }
 
-        let secret = self
-            .keystore
-            .get(&binding.keystore_key)?
-            .ok_or_else(|| BrokerError::SecretNotFound {
+        let secret = self.keystore.get(&binding.keystore_key)?.ok_or_else(|| {
+            BrokerError::SecretNotFound {
                 handle: handle.to_string(),
                 key: binding.keystore_key.clone(),
-            })?;
+            }
+        })?;
 
         Ok((binding, secret))
     }
@@ -212,7 +229,12 @@ impl CredentialBroker {
     }
 
     /// Verify an HMAC-SHA256 signature for a payload using the handle's secret.
-    pub fn verify_signature(&self, handle: &str, payload: &[u8], signature_hex: &str) -> Result<bool, BrokerError> {
+    pub fn verify_signature(
+        &self,
+        handle: &str,
+        payload: &[u8],
+        signature_hex: &str,
+    ) -> Result<bool, BrokerError> {
         let expected = self.sign_payload(handle, payload)?;
         Ok(expected.eq_ignore_ascii_case(signature_hex))
     }
@@ -269,7 +291,10 @@ impl CredentialBroker {
     /// Inject secrets into template string placeholders like `{{credential:<handle>}}` or `{{<handle>}}`.
     pub fn inject_template(&self, template: &str) -> Result<String, BrokerError> {
         let bindings = {
-            let map = self.bindings.read().map_err(|_| BrokerError::LockError("Failed to acquire read lock".into()))?;
+            let map = self
+                .bindings
+                .read()
+                .map_err(|_| BrokerError::LockError("Failed to acquire read lock".into()))?;
             map.clone()
         };
 
@@ -287,16 +312,16 @@ impl CredentialBroker {
                     });
                 }
 
-                let secret = self
-                    .keystore
-                    .get(&binding.keystore_key)?
-                    .ok_or_else(|| BrokerError::SecretNotFound {
+                let secret = self.keystore.get(&binding.keystore_key)?.ok_or_else(|| {
+                    BrokerError::SecretNotFound {
                         handle: handle.clone(),
                         key: binding.keystore_key.clone(),
-                    })?;
+                    }
+                })?;
 
-                let secret_str = String::from_utf8(secret)
-                    .map_err(|e| BrokerError::InvalidEncoding(format!("Secret for {handle} is not UTF-8: {e}")))?;
+                let secret_str = String::from_utf8(secret).map_err(|e| {
+                    BrokerError::InvalidEncoding(format!("Secret for {handle} is not UTF-8: {e}"))
+                })?;
 
                 output = output.replace(&p1, &secret_str);
                 output = output.replace(&p2, &secret_str);
@@ -348,7 +373,10 @@ impl CredentialBroker {
             let sig = self.sign_payload(handle, challenge_hash.as_bytes())?;
             (format!("auth_data_for_{}", handle), sig)
         } else {
-            let fallback_sig = format!("{:x}", Sha256::digest(format!("{}:{}", challenge_hash, params.ceremony_id).as_bytes()));
+            let fallback_sig = format!(
+                "{:x}",
+                Sha256::digest(format!("{}:{}", challenge_hash, params.ceremony_id).as_bytes())
+            );
             ("frostfire_local_authenticator".to_string(), fallback_sig)
         };
 
@@ -439,7 +467,9 @@ mod tests {
     #[test]
     fn test_inverted_broker_signing() {
         let keystore = Arc::new(InMemoryKeyStore::new());
-        keystore.set_str("keys/signing_key", "super_secret_signing_key_42").unwrap();
+        keystore
+            .set_str("keys/signing_key", "super_secret_signing_key_42")
+            .unwrap();
 
         let broker = CredentialBroker::new(keystore);
         broker
@@ -453,7 +483,9 @@ mod tests {
         let valid = broker.verify_signature("signer-1", payload, &sig).unwrap();
         assert!(valid);
 
-        let invalid = broker.verify_signature("signer-1", b"tampered-payload", &sig).unwrap();
+        let invalid = broker
+            .verify_signature("signer-1", b"tampered-payload", &sig)
+            .unwrap();
         assert!(!invalid);
     }
 
@@ -476,9 +508,18 @@ mod tests {
 
         // Allowed host
         broker
-            .inject_header("gh-token", &mut headers, "Authorization", Some("Bearer "), Some("api.github.com"))
+            .inject_header(
+                "gh-token",
+                &mut headers,
+                "Authorization",
+                Some("Bearer "),
+                Some("api.github.com"),
+            )
             .unwrap();
-        assert_eq!(headers.get("Authorization"), Some(&"Bearer ghp_tok12345".to_string()));
+        assert_eq!(
+            headers.get("Authorization"),
+            Some(&"Bearer ghp_tok12345".to_string())
+        );
 
         // Disallowed host must fail
         let err = broker.inject_header(
@@ -503,12 +544,18 @@ mod tests {
 
         let template = "curl -H 'Authorization: Bearer {{credential:slack-bot}}' https://slack.com";
         let injected = broker.inject_template(template).unwrap();
-        assert_eq!(injected, "curl -H 'Authorization: Bearer xoxb-9988776655' https://slack.com");
+        assert_eq!(
+            injected,
+            "curl -H 'Authorization: Bearer xoxb-9988776655' https://slack.com"
+        );
 
         // Sanitization redacts secret from text
         let log_output = "Error: Failed response with auth token xoxb-9988776655";
         let redacted = broker.sanitize_output(log_output);
-        assert_eq!(redacted, "Error: Failed response with auth token [REDACTED:slack-bot]");
+        assert_eq!(
+            redacted,
+            "Error: Failed response with auth token [REDACTED:slack-bot]"
+        );
     }
 
     #[test]
@@ -538,7 +585,9 @@ mod tests {
     #[test]
     fn test_webauthn_ceremony_signing() {
         let keystore = Arc::new(InMemoryKeyStore::new());
-        keystore.set("keys/webauthn", b"super_secret_hardware_backed_private_key").unwrap();
+        keystore
+            .set("keys/webauthn", b"super_secret_hardware_backed_private_key")
+            .unwrap();
 
         let broker = CredentialBroker::new(keystore);
         broker
@@ -552,11 +601,12 @@ mod tests {
             options_json: r#"{"challenge":"dGVzdGNoYWxsZW5nZQ=="}"#.into(),
         };
 
-        let result = broker.sign_webauthn_ceremony(&params, Some("yubikey-01")).unwrap();
+        let result = broker
+            .sign_webauthn_ceremony(&params, Some("yubikey-01"))
+            .unwrap();
         assert!(result.success);
         assert_eq!(result.ceremony_id, "ceremony-999");
         assert!(result.credential_json.contains("public-key"));
         assert!(result.credential_json.contains("auth_data_for_yubikey-01"));
     }
 }
-

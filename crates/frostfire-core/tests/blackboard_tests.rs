@@ -1,4 +1,6 @@
-use frostfire_core::blackboard::{ArtifactUri, BlackboardArtifact, BlackboardError, BlackboardStore};
+use frostfire_core::blackboard::{
+    ArtifactUri, BlackboardArtifact, BlackboardError, BlackboardStore,
+};
 use std::sync::Arc;
 
 #[test]
@@ -18,7 +20,8 @@ fn test_invalid_uri_parsing() {
     assert!(ArtifactUri::parse("http://example.com").is_err());
     assert!(ArtifactUri::parse("blackboard://sprint-001/team").is_err());
     assert!(ArtifactUri::parse("blackboard://sprint-001/team/agent/doc").is_err()); // missing @v
-    assert!(ArtifactUri::parse("blackboard://sprint-001/team/agent/doc@vABC").is_err()); // non-numeric version
+    assert!(ArtifactUri::parse("blackboard://sprint-001/team/agent/doc@vABC").is_err());
+    // non-numeric version
 }
 
 #[tokio::test]
@@ -32,11 +35,15 @@ async fn test_author_write_acl_enforcement() {
         "Initial User Journey Analysis",
         "{\"journeys\": [\"discovery\", \"checkout\"]}",
         "application/json",
-    ).expect("Artifact creation should succeed");
+    )
+    .expect("Artifact creation should succeed");
 
     // Authorized write: author matches URI namespace
     let result = store.publish("sme_scout", artifact.clone()).await;
-    assert!(result.is_ok(), "Authorized author should be permitted to write");
+    assert!(
+        result.is_ok(),
+        "Authorized author should be permitted to write"
+    );
 
     // Unauthorized write: author does NOT match URI namespace
     let unauthorized_artifact = BlackboardArtifact::new(
@@ -45,11 +52,15 @@ async fn test_author_write_acl_enforcement() {
         "Hacked content",
         "{}",
         "application/json",
-    ).expect("Artifact creation should succeed");
+    )
+    .expect("Artifact creation should succeed");
 
     let denied_result = store.publish("sme_hacker", unauthorized_artifact).await;
     assert!(
-        matches!(denied_result, Err(BlackboardError::WriteAccessDenied { .. })),
+        matches!(
+            denied_result,
+            Err(BlackboardError::WriteAccessDenied { .. })
+        ),
         "Unauthorized agent must be rejected with WriteAccessDenied"
     );
 }
@@ -64,7 +75,8 @@ async fn test_version_increment_and_lookup() {
         "Spec V1",
         "draft 1",
         "text/markdown",
-    ).unwrap();
+    )
+    .unwrap();
     store.publish("agent-1", a1).await.unwrap();
 
     let a2 = BlackboardArtifact::new(
@@ -73,20 +85,30 @@ async fn test_version_increment_and_lookup() {
         "Spec V2",
         "draft 2 updated",
         "text/markdown",
-    ).unwrap();
+    )
+    .unwrap();
     store.publish("agent-1", a2).await.unwrap();
 
     // Fetch specific version
-    let fetched_v1 = store.get("blackboard://ws-1/team-core/agent-1/spec@v1").await.unwrap();
+    let fetched_v1 = store
+        .get("blackboard://ws-1/team-core/agent-1/spec@v1")
+        .await
+        .unwrap();
     assert_eq!(fetched_v1.content, "draft 1");
     assert_eq!(fetched_v1.version, 1);
 
-    let fetched_v2 = store.get("blackboard://ws-1/team-core/agent-1/spec@v2").await.unwrap();
+    let fetched_v2 = store
+        .get("blackboard://ws-1/team-core/agent-1/spec@v2")
+        .await
+        .unwrap();
     assert_eq!(fetched_v2.content, "draft 2 updated");
     assert_eq!(fetched_v2.version, 2);
 
     // Fetch latest
-    let latest = store.get_latest("ws-1", "team-core", "agent-1", "spec").await.unwrap();
+    let latest = store
+        .get_latest("ws-1", "team-core", "agent-1", "spec")
+        .await
+        .unwrap();
     assert_eq!(latest.version, 2);
     assert_eq!(latest.content, "draft 2 updated");
 }
@@ -102,7 +124,8 @@ async fn test_signal_bus_broadcast() {
         "Architecture Plan",
         "Content payload that is large and omitted in signal",
         "text/plain",
-    ).unwrap();
+    )
+    .unwrap();
 
     store.publish("a1", a).await.unwrap();
 
@@ -116,7 +139,8 @@ async fn test_signal_bus_broadcast() {
 
 #[tokio::test]
 async fn test_hybrid_blob_storage_over_1mb() {
-    let tmp_dir = std::env::temp_dir().join(format!("frostfire_blob_test_{}", uuid::Uuid::new_v4()));
+    let tmp_dir =
+        std::env::temp_dir().join(format!("frostfire_blob_test_{}", uuid::Uuid::new_v4()));
     let store = BlackboardStore::new_with_persistence(tmp_dir.clone());
 
     // Create a 1.2MB payload
@@ -127,13 +151,20 @@ async fn test_hybrid_blob_storage_over_1mb() {
         "Large Dataset",
         &large_payload,
         "application/octet-stream",
-    ).unwrap();
+    )
+    .unwrap();
 
-    let signal = store.publish("a1", artifact.clone()).await.expect("Publish should succeed");
+    let signal = store
+        .publish("a1", artifact.clone())
+        .await
+        .expect("Publish should succeed");
     assert_eq!(signal.size_bytes, 1_200_000);
 
     // Verify retrieval matches original content
-    let retrieved = store.get("blackboard://ws-blob/t1/a1/large_dataset@v1").await.unwrap();
+    let retrieved = store
+        .get("blackboard://ws-blob/t1/a1/large_dataset@v1")
+        .await
+        .unwrap();
     assert_eq!(retrieved.content.len(), 1_200_000);
     assert_eq!(retrieved.content, large_payload);
 
@@ -146,8 +177,9 @@ async fn test_hybrid_blob_storage_over_1mb() {
 
 #[tokio::test]
 async fn test_sqlite_disk_persistence_across_restarts() {
-    let tmp_dir = std::env::temp_dir().join(format!("frostfire_persist_test_{}", uuid::Uuid::new_v4()));
-    
+    let tmp_dir =
+        std::env::temp_dir().join(format!("frostfire_persist_test_{}", uuid::Uuid::new_v4()));
+
     // Step 1: Open store, write artifact, and drop
     {
         let store = BlackboardStore::new_with_persistence(tmp_dir.clone());
@@ -157,14 +189,18 @@ async fn test_sqlite_disk_persistence_across_restarts() {
             "Persistent Spec",
             "critical architectural requirements",
             "text/markdown",
-        ).unwrap();
+        )
+        .unwrap();
         store.publish("agent-y", a).await.unwrap();
     }
 
     // Step 2: Re-open store from the same directory and verify data persists
     {
         let store = BlackboardStore::new_with_persistence(tmp_dir.clone());
-        let loaded = store.get("blackboard://ws-persist/team-x/agent-y/spec@v1").await.expect("Artifact should persist in SQLite across restart");
+        let loaded = store
+            .get("blackboard://ws-persist/team-x/agent-y/spec@v1")
+            .await
+            .expect("Artifact should persist in SQLite across restart");
         assert_eq!(loaded.content, "critical architectural requirements");
         assert_eq!(loaded.author_id, "agent-y");
         assert_eq!(loaded.title, "Persistent Spec");
@@ -190,16 +226,24 @@ async fn test_concurrent_writer_actor_burst() {
                 "Concurrent Result",
                 &format!("result payload {}", i),
                 "text/plain",
-            ).unwrap();
+            )
+            .unwrap();
             store_clone.publish(&agent_id, artifact).await
         }));
     }
 
     for handle in handles {
         let res = handle.await.unwrap();
-        assert!(res.is_ok(), "Concurrent write via actor channel must succeed without SQLITE_BUSY");
+        assert!(
+            res.is_ok(),
+            "Concurrent write via actor channel must succeed without SQLITE_BUSY"
+        );
     }
 
     let list = store.list_by_workstream("burst-sprint").await;
-    assert_eq!(list.len(), 20, "All 20 concurrent artifacts must be indexed and retrievable");
+    assert_eq!(
+        list.len(),
+        20,
+        "All 20 concurrent artifacts must be indexed and retrievable"
+    );
 }
