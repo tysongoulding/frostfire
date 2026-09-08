@@ -388,47 +388,87 @@ html.light textarea::placeholder {
   margin-bottom: 0.35rem;
 }
 
-/* FrostFire Animated Gradient (Frost Cyan <-> Fire Flame) */
-@keyframes frostfire-sweep {
-  0% {
-    background-position: 0% 50%;
+/* Synchronized FrostFire Text Pulse (App Red #FF3366 <-> App Blue #38BDF8) */
+@keyframes frostfire-text-pulse {
+  0%, 15% {
+    color: #FF3366;
+    text-shadow: 0 0 10px rgba(255, 51, 102, 0.7), 0 0 20px rgba(255, 51, 102, 0.3);
   }
-  50% {
-    background-position: 100% 50%;
+  40%, 65% {
+    color: #38BDF8;
+    text-shadow: 0 0 10px rgba(56, 189, 248, 0.7), 0 0 20px rgba(56, 189, 248, 0.3);
   }
-  100% {
-    background-position: 0% 50%;
+  90%, 100% {
+    color: #FF3366;
+    text-shadow: 0 0 10px rgba(255, 51, 102, 0.7), 0 0 20px rgba(255, 51, 102, 0.3);
   }
 }
 
 .animate-frostfire-text {
-  background: linear-gradient(
-    90deg,
-    #38bdf8 0%,
-    #60a5fa 15%,
-    #f43f5e 38%,
-    #fb923c 55%,
-    #facc15 68%,
-    #f43f5e 82%,
-    #38bdf8 100%
-  );
-  background-size: 250% 100%;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: frostfire-sweep 2.4s ease-in-out infinite;
+  animation: frostfire-text-pulse 2.8s ease-in-out infinite;
   display: inline-block;
 }
 
-.animate-frostfire-glow {
-  background: linear-gradient(
-    90deg,
-    #38bdf8,
-    #f43f5e,
-    #fb923c,
-    #38bdf8
-  );
-  background-size: 250% 100%;
-  animation: frostfire-sweep 2.4s ease-in-out infinite;
+/* Flame <-> Snowflake Morph Cycle (App Red #FF3366 & App Blue #38BDF8) */
+@keyframes flame-cycle {
+  0%, 15% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+    filter: drop-shadow(0 0 8px #FF3366) drop-shadow(0 0 3px #FF3366);
+  }
+  40%, 65% {
+    opacity: 0;
+    transform: scale(0.4) rotate(35deg);
+    filter: drop-shadow(0 0 0px transparent);
+  }
+  90%, 100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+    filter: drop-shadow(0 0 8px #FF3366) drop-shadow(0 0 3px #FF3366);
+  }
 }
+
+@keyframes snowflake-cycle {
+  0%, 15% {
+    opacity: 0;
+    transform: scale(0.4) rotate(-35deg);
+    filter: drop-shadow(0 0 0px transparent);
+  }
+  40%, 65% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+    filter: drop-shadow(0 0 8px #38BDF8) drop-shadow(0 0 3px #38BDF8);
+  }
+  90%, 100% {
+    opacity: 0;
+    transform: scale(0.4) rotate(-35deg);
+    filter: drop-shadow(0 0 0px transparent);
+  }
+}
+
+.icon-morph-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.icon-flame {
+  position: absolute;
+  color: #FF3366;
+  animation: flame-cycle 2.8s ease-in-out infinite;
+  transition: all 0.3s;
+}
+
+.icon-snowflake {
+  position: absolute;
+  color: #38BDF8;
+  animation: snowflake-cycle 2.8s ease-in-out infinite;
+  transition: all 0.3s;
+}
+
 
 

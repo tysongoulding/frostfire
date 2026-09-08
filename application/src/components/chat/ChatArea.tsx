@@ -13,6 +13,8 @@ import {
   ChevronRight,
   Sparkles,
   Loader2,
+  Flame,
+  Snowflake,
 } from 'lucide-react';
 
 interface ChatAreaProps {
@@ -228,9 +230,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           {/* Live Execution / Thinking Indicator */}
           {isThinking && (
             <div className="w-full flex items-center gap-3 py-2.5 px-1">
-              <div className="relative flex items-center justify-center shrink-0">
-                <span className="absolute w-5 h-5 rounded-full animate-frostfire-glow blur-xs opacity-70" />
-                <span className="relative w-2.5 h-2.5 rounded-full bg-gradient-to-r from-sky-400 via-rose-500 to-amber-500" />
+              <div className="icon-morph-container">
+                <Flame className="icon-flame w-4 h-4" />
+                <Snowflake className="icon-snowflake w-4 h-4" />
               </div>
               <div className="flex items-center select-none font-mono text-sm tracking-wide font-bold">
                 <span className="animate-frostfire-text">Working....</span>
