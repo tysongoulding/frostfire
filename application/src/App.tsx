@@ -577,24 +577,43 @@ const MainApp: React.FC = () => {
           execPort,
         });
       } catch {
-        // Direct fallback to EC2 instance if running outside Tauri
-        const resp = await fetch(`http://${vmHost}:${execPort}/exec`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            display: displayNumber,
-            command: text,
-            cwd: '/home/ubuntu',
-            background: false,
-          }),
-        });
-        const execData = await resp.json();
-        res = {
-          reply: execData.stdout
-            ? `Output on Display :${displayNumber}:\n\n\`\`\`\n${execData.stdout.trim()}\n\`\`\``
-            : `Executed command on Display :${displayNumber}.`,
-          toolCalls: ['bash_exec'],
-        };
+        // Direct fallback to EC2 agent turn API if running outside Tauri
+        try {
+          const resp = await fetch(`http://${vmHost}:${execPort}/agent/turn`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: activeUserId,
+              display: displayNumber,
+              prompt: text,
+            }),
+          });
+          if (resp.ok) {
+            res = await resp.json();
+          }
+        } catch {
+          // Fall back to direct /exec
+        }
+
+        if (!res) {
+          const resp = await fetch(`http://${vmHost}:${execPort}/exec`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              display: displayNumber,
+              command: text,
+              cwd: '/home/ubuntu',
+              background: false,
+            }),
+          });
+          const execData = await resp.json();
+          res = {
+            reply: execData.stdout
+              ? `Output on Display :${displayNumber}:\n\n\`\`\`\n${execData.stdout.trim()}\n\`\`\``
+              : `Action executed on Display :${displayNumber}.`,
+            toolCalls: ['bash_exec'],
+          };
+        }
       }
 
       const aiReply: ChatMessage = {
