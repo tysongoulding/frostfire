@@ -4,6 +4,7 @@ set -euo pipefail
 
 TOKEN_DIR="/tmp/sand-novnc-tokens.d"
 LOG_DIR="/tmp/frostfire-display-logs"
+rm -rf /tmp/.X*-lock /tmp/.X11-unix/* "${LOG_DIR}/*" 2>/dev/null || true
 mkdir -p "${TOKEN_DIR}" "${LOG_DIR}" /tmp/.X11-unix
 chmod 1777 /tmp/.X11-unix "${TOKEN_DIR}"
 
