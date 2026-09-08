@@ -13,8 +13,6 @@ import {
   PanelRight,
   Flame,
   Snowflake,
-  MessageSquare,
-  Monitor,
 } from 'lucide-react';
 import {
   minimizeWindow,
@@ -45,8 +43,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   leftSidebarOpen,
   onToggleRightPanel,
   rightPanelOpen,
-  activeTab = 'chat',
-  onSelectTab,
+  activeTab: _activeTab = 'chat',
+  onSelectTab: _onSelectTab,
   isWorking = false,
 }) => {
   const { theme, devicePreview, setDevicePreview } = useTheme();
@@ -158,36 +156,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             </div>
           ) : (
             <span className={`w-1.5 h-1.5 rounded-full ${dotColor} theme-status-dot hidden sm:inline-block`} title="Ready" />
-          )}
-
-          {/* Chat / Screen Tab Switcher */}
-          {!isTeam && onSelectTab && (
-            <div className="flex items-center bg-theme-bg border border-theme-border rounded-lg p-0.5 pointer-events-auto ml-1 sm:ml-2 shadow-xs">
-              <button
-                onClick={() => onSelectTab('chat')}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
-                  activeTab === 'chat'
-                    ? 'bg-theme-surface text-theme-text-primary font-semibold shadow-xs'
-                    : 'text-theme-text-muted hover:text-theme-text-primary'
-                }`}
-                title="Switch to Chat"
-              >
-                <MessageSquare className="w-3 h-3" />
-                <span className="hidden md:inline">Chat</span>
-              </button>
-              <button
-                onClick={() => onSelectTab('screen')}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
-                  activeTab === 'screen'
-                    ? 'bg-theme-surface text-theme-accent-primary font-semibold shadow-xs'
-                    : 'text-theme-text-muted hover:text-theme-text-primary'
-                }`}
-                title="Switch to full Screen view"
-              >
-                <Monitor className="w-3 h-3" />
-                <span className="hidden md:inline">Screen</span>
-              </button>
-            </div>
           )}
         </div>
 
