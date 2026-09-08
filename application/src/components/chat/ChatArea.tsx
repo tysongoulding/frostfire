@@ -10,7 +10,6 @@ import {
   Check,
   ThumbsUp,
   ThumbsDown,
-  ChevronRight,
   Sparkles,
   Loader2,
   Flame,
@@ -140,12 +139,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               return (
                 /* AI Message: Left-aligned, NO BUBBLE (Antigravity free-flow text) */
                 <div key={msg.id} className="w-full max-w-full flex flex-col items-start space-y-2 group">
-                  {/* Antigravity status / execution step indicator */}
-                  <div className="flex items-center gap-1 text-[11px] text-theme-text-muted hover:text-theme-text-primary cursor-pointer transition-colors select-none">
-                    <span>Worked for 18s</span>
-                    <ChevronRight className="w-3 h-3" />
-                  </div>
-
                   {/* Free-flowing AI body */}
                   <div className="w-full max-w-full text-xs sm:text-sm text-theme-text-primary leading-relaxed space-y-3 font-normal break-words [overflow-wrap:anywhere]">
                     {msg.text.split('\n\n').map((paragraph, i) => {
@@ -172,20 +165,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                       );
                     })}
                   </div>
-
-                  {/* Tool Call Badges */}
-                  {msg.toolCalls && msg.toolCalls.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                      {msg.toolCalls.map((tool, idx) => (
-                        <span
-                          key={idx}
-                          className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-theme-surface border border-theme-border text-amber-400 flex items-center gap-1"
-                        >
-                          ⚡ {tool}
-                        </span>
-                      ))}
-                    </div>
-                  )}
 
                   {/* Antigravity Action Toolbar below AI message */}
                   <div className="flex items-center gap-1.5 pt-1 text-theme-text-muted">
@@ -237,9 +216,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               <div className="flex items-center select-none font-mono text-sm tracking-wide font-bold">
                 <span className="animate-frostfire-text">Working....</span>
               </div>
-              <span className="text-[11px] font-mono text-zinc-500 ml-1.5 hidden sm:inline">
-                ({agentName}&apos;s cloud desktop)
-              </span>
             </div>
           )}
 
