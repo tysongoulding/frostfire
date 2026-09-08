@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Globe,
   Folder,
@@ -8,7 +8,7 @@ import {
   Radio,
   RotateCw,
 } from 'lucide-react';
-import { getVncUrl, DEFAULT_EC2_HOST } from '../../lib/vnc';
+import { getVncUrl, resolveVncSession, DEFAULT_EC2_HOST } from '../../lib/vnc';
 import { useUserStore } from '../../store/userStore';
 
 interface ScreenViewProps {
@@ -45,8 +45,22 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
 
   const displayNumber = propDisplayNumber ?? 1;
   const vmHost = propVmHost || currentUser?.vmHost || DEFAULT_EC2_HOST;
-  const agentPort = propVncPort ?? (6079 + displayNumber);
   const execPort = propExecPort ?? (currentUser?.execPort || 3000);
+  const [resolvedPort, setResolvedPort] = useState<number | undefined>(propVncPort);
+
+  useEffect(() => {
+    let mounted = true;
+    resolveVncSession(currentUserId, displayNumber, undefined, vmHost, execPort).then((info) => {
+      if (mounted && info.vncPort) {
+        setResolvedPort(info.vncPort);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [currentUserId, displayNumber, vmHost, execPort]);
+
+  const agentPort = propVncPort ?? resolvedPort ?? (6079 + displayNumber);
 
   const vncUrl = getVncUrl(displayNumber, {
     host: vmHost,

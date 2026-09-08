@@ -52,3 +52,32 @@ export function getVncWebSocketUrl(
   const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
   return `${proto}://${host}:${port}/websockify${tokenQuery}`;
 }
+
+export async function resolveVncSession(
+  user: string,
+  display: number,
+  token?: string,
+  host: string = DEFAULT_EC2_HOST,
+  execPort: number = 3000
+): Promise<{ vncPort: number; execPort: number; status: string }> {
+  try {
+    const query = new URLSearchParams({ user, display: String(display) });
+    if (token) query.set('token', token);
+    const res = await fetch(`http://${host}:${execPort}/resolve?${query.toString()}`);
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        vncPort: data.vncPort || getVncPort(display),
+        execPort: data.execPort || execPort,
+        status: data.status || 'running',
+      };
+    }
+  } catch {
+    // Fall back to default computation
+  }
+  return {
+    vncPort: getVncPort(display),
+    execPort,
+    status: 'running',
+  };
+}
