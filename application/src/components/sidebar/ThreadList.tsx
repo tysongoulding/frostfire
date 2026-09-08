@@ -16,6 +16,8 @@ import {
   MoreVertical,
   Edit2,
   Trash2,
+  Flame,
+  Snowflake,
 } from 'lucide-react';
 import { ContextMenu, ContextMenuPosition, ContextMenuItemTarget, SectionOption } from './ContextMenu';
 
@@ -37,6 +39,7 @@ interface ThreadListProps {
   onCopyConversationId: (id: string) => void;
   onHideFromSidebar: (id: string) => void;
   onDeleteItem: (id: string) => void;
+  isWorking?: boolean;
 }
 
 export const ThreadList: React.FC<ThreadListProps> = ({
@@ -57,6 +60,7 @@ export const ThreadList: React.FC<ThreadListProps> = ({
   onCopyConversationId,
   onHideFromSidebar,
   onDeleteItem,
+  isWorking = false,
 }) => {
   // Context menu state
   const [contextMenuState, setContextMenuState] = useState<{
@@ -414,6 +418,7 @@ export const ThreadList: React.FC<ThreadListProps> = ({
                   sectionItems.map((item) => {
                     const isSelected = selectedItemId === item.id;
                     const isDraggingThis = draggedItemId === item.id;
+                    const isItemWorking = isSelected && isWorking;
 
                     return (
                       <div
@@ -437,13 +442,20 @@ export const ThreadList: React.FC<ThreadListProps> = ({
                         } ${isDraggingThis ? 'opacity-40 scale-98' : ''}`}
                       >
                         {/* Avatar */}
-                        {getItemAvatar(item)}
+                        <div className="relative shrink-0">
+                          {getItemAvatar(item)}
+                          {isItemWorking && (
+                            <span className="absolute -top-1 -right-1 flex items-center justify-center">
+                              <span className="animate-frostfire-dot w-2.5 h-2.5 rounded-full" title="Actively working in cloud microVM" />
+                            </span>
+                          )}
+                        </div>
 
                         {/* Details */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-1">
                             <div className="flex items-center gap-1.5 min-w-0">
-                              <span className="font-semibold text-xs text-theme-text-primary truncate">
+                              <span className={`font-semibold text-xs truncate ${isItemWorking ? 'animate-frostfire-text' : 'text-theme-text-primary'}`}>
                                 {item.title}
                               </span>
                               {item.roleTag && (
@@ -454,6 +466,12 @@ export const ThreadList: React.FC<ThreadListProps> = ({
                             </div>
 
                             <div className="flex items-center gap-1 shrink-0">
+                              {isItemWorking && (
+                                <div className="icon-morph-container w-3 h-3">
+                                  <Flame className="icon-flame w-3 h-3" />
+                                  <Snowflake className="icon-snowflake w-3 h-3" />
+                                </div>
+                              )}
                               {(item.isStarred ?? item.isPinned) && (
                                 <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
                               )}
@@ -466,8 +484,8 @@ export const ThreadList: React.FC<ThreadListProps> = ({
                             </div>
                           </div>
 
-                          <p className="text-[11px] text-theme-text-muted truncate mt-0.5">
-                            {item.preview}
+                          <p className={`text-[11px] truncate mt-0.5 ${isItemWorking ? 'animate-frostfire-text font-medium' : 'text-theme-text-muted'}`}>
+                            {isItemWorking ? 'Working....' : item.preview}
                           </p>
                         </div>
                       </div>

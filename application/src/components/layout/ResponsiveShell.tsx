@@ -52,6 +52,7 @@ interface ResponsiveShellProps {
   displayNumber?: number;
   vncPort?: number;
   vmHost?: string;
+  isWorking?: boolean;
   children: React.ReactNode;
 }
 
@@ -81,6 +82,7 @@ export const ResponsiveShell: React.FC<ResponsiveShellProps> = ({
   onOpenScreenModal,
   onNewAgent,
   onNewTeam,
+  isWorking = false,
   leftSidebarOpen = true,
   onToggleLeftSidebar,
   rightPanelOpen = true,
@@ -149,6 +151,7 @@ export const ResponsiveShell: React.FC<ResponsiveShellProps> = ({
             rightPanelOpen={effectiveRightOpen}
             activeTab={activeTab}
             onSelectTab={onSelectTab}
+            isWorking={isWorking}
           />
 
           {isTakeoverView ? (
@@ -165,6 +168,7 @@ export const ResponsiveShell: React.FC<ResponsiveShellProps> = ({
                 <div className="w-full h-full flex justify-center bg-theme-surface">
                   <div className="w-full max-w-2xl h-full flex flex-col">
                     <AppSidebar
+                      isWorking={isWorking}
                       selectedAgentId={selectedAgentId}
                       onSelectAgent={(id) => {
                         onSelectAgent(id);
@@ -258,6 +262,7 @@ export const ResponsiveShell: React.FC<ResponsiveShellProps> = ({
                   }`}
                 >
                   <AppSidebar
+                    isWorking={isWorking}
                     selectedAgentId={selectedAgentId}
                     onSelectAgent={onSelectAgent}
                     selectedThreadId={selectedThreadId}

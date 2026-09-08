@@ -12,6 +12,7 @@ import {
   PanelLeft,
   PanelRight,
   Flame,
+  Snowflake,
   MessageSquare,
   Monitor,
 } from 'lucide-react';
@@ -32,6 +33,7 @@ interface HeaderBarProps {
   rightPanelOpen: boolean;
   activeTab?: ActiveTab;
   onSelectTab?: (tab: ActiveTab) => void;
+  isWorking?: boolean;
 }
 
 export const HeaderBar: React.FC<HeaderBarProps> = ({
@@ -45,6 +47,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   rightPanelOpen,
   activeTab = 'chat',
   onSelectTab,
+  isWorking = false,
 }) => {
   const { devicePreview, setDevicePreview } = useTheme();
   const { isPhone, isTablet } = useBreakpoint();
@@ -140,7 +143,20 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               {agentRole.includes('Display') ? agentRole.split('·')[0].trim() : agentRole}
             </span>
           )}
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse hidden sm:inline-block" />
+          {/* Top Bar Status Indicator: Idle Green Dot -> Fire/Frost Shift when Actively Working */}
+          {isWorking ? (
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-theme-bg/80 border border-theme-border shadow-xs" title="Agent actively working in Cloud microVM">
+              <div className="icon-morph-container w-3.5 h-3.5">
+                <Flame className="icon-flame w-3.5 h-3.5" />
+                <Snowflake className="icon-snowflake w-3.5 h-3.5" />
+              </div>
+              <span className="animate-frostfire-text font-mono font-bold text-[10px] tracking-wide">
+                Working....
+              </span>
+            </div>
+          ) : (
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse hidden sm:inline-block" title="Ready / Idle" />
+          )}
 
           {/* Chat / Screen Tab Switcher */}
           {!isTeam && onSelectTab && (

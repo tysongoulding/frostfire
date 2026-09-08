@@ -46,6 +46,7 @@ interface AppSidebarProps {
   onDeleteItem?: (id: string) => void;
   userName?: string;
   userSubtitle?: string;
+  isWorking?: boolean;
 }
 
 export const AppSidebar: React.FC<AppSidebarProps> = ({
@@ -57,6 +58,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   onOpenSettings,
   onNewAgent,
   onNewTeam,
+  isWorking = false,
   teamMemberCounts: _teamMemberCounts,
   sections,
   items,
@@ -194,6 +196,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
 
       {/* Dynamic Sections & Items List */}
       <ThreadList
+        isWorking={isWorking}
         sections={sections || [
           { id: 'starred', title: 'Starred', isStarSection: true, isPinnedSection: true },
           { id: 'teams', title: 'Teams' },

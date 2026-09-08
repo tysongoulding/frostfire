@@ -705,6 +705,7 @@ const MainApp: React.FC = () => {
         displayNumber={currentAgent.displayNumber}
         vncPort={currentAgent.vncPort}
         vmHost={currentAgent.vmHost}
+        isWorking={isThinking}
       >
         {activeTab === 'screen' && !isTeam ? (
           <ScreenView

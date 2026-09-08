@@ -20,6 +20,7 @@
   --accent-primary: #38BDF8;
   --accent-secondary: #FF3366;
   --border: #2E2E2E;
+  --frostfire-speed: 2.6s;
 }
 
 *, ::before, ::after {
@@ -405,7 +406,7 @@ html.light textarea::placeholder {
 }
 
 .animate-frostfire-text {
-  animation: frostfire-text-pulse 2.8s ease-in-out infinite;
+  animation: frostfire-text-pulse var(--frostfire-speed, 2.6s) ease-in-out infinite;
   display: inline-block;
 }
 
@@ -446,6 +447,29 @@ html.light textarea::placeholder {
   }
 }
 
+/* Synchronized FrostFire Dot Pulse (Top Bar & Menu Bar) */
+@keyframes frostfire-dot-pulse {
+  0%, 15% {
+    background-color: #FF3366;
+    box-shadow: 0 0 8px #FF3366, 0 0 16px rgba(255, 51, 102, 0.6);
+    transform: scale(1.2);
+  }
+  40%, 65% {
+    background-color: #38BDF8;
+    box-shadow: 0 0 8px #38BDF8, 0 0 16px rgba(56, 189, 248, 0.6);
+    transform: scale(0.95);
+  }
+  90%, 100% {
+    background-color: #FF3366;
+    box-shadow: 0 0 8px #FF3366, 0 0 16px rgba(255, 51, 102, 0.6);
+    transform: scale(1.2);
+  }
+}
+
+.animate-frostfire-dot {
+  animation: frostfire-dot-pulse var(--frostfire-speed, 2.6s) ease-in-out infinite;
+}
+
 .icon-morph-container {
   position: relative;
   display: flex;
@@ -459,14 +483,14 @@ html.light textarea::placeholder {
 .icon-flame {
   position: absolute;
   color: #FF3366;
-  animation: flame-cycle 2.8s ease-in-out infinite;
+  animation: flame-cycle var(--frostfire-speed, 2.6s) ease-in-out infinite;
   transition: all 0.3s;
 }
 
 .icon-snowflake {
   position: absolute;
   color: #38BDF8;
-  animation: snowflake-cycle 2.8s ease-in-out infinite;
+  animation: snowflake-cycle var(--frostfire-speed, 2.6s) ease-in-out infinite;
   transition: all 0.3s;
 }
 
