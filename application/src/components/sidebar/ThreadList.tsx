@@ -444,18 +444,13 @@ export const ThreadList: React.FC<ThreadListProps> = ({
                         {/* Avatar */}
                         <div className="relative shrink-0">
                           {getItemAvatar(item)}
-                          {isItemWorking && (
-                            <span className="absolute -top-1 -right-1 flex items-center justify-center">
-                              <span className="animate-frostfire-dot w-2.5 h-2.5 rounded-full" title="Actively working in cloud microVM" />
-                            </span>
-                          )}
                         </div>
 
                         {/* Details */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-1">
                             <div className="flex items-center gap-1.5 min-w-0">
-                              <span className={`font-semibold text-xs truncate ${isItemWorking ? 'animate-frostfire-text' : 'text-theme-text-primary'}`}>
+                              <span className="font-semibold text-xs text-theme-text-primary truncate">
                                 {item.title}
                               </span>
                               {item.roleTag && (
@@ -467,9 +462,9 @@ export const ThreadList: React.FC<ThreadListProps> = ({
 
                             <div className="flex items-center gap-1 shrink-0">
                               {isItemWorking && (
-                                <div className="icon-morph-container w-3 h-3">
-                                  <Flame className="icon-flame w-3 h-3" />
-                                  <Snowflake className="icon-snowflake w-3 h-3" />
+                                <div className="icon-morph-container w-3.5 h-3.5 mr-0.5" title="Actively working">
+                                  <Flame className="icon-flame w-3.5 h-3.5" />
+                                  <Snowflake className="icon-snowflake w-3.5 h-3.5" />
                                 </div>
                               )}
                               {(item.isStarred ?? item.isPinned) && (
@@ -484,8 +479,8 @@ export const ThreadList: React.FC<ThreadListProps> = ({
                             </div>
                           </div>
 
-                          <p className={`text-[11px] truncate mt-0.5 ${isItemWorking ? 'animate-frostfire-text font-medium' : 'text-theme-text-muted'}`}>
-                            {isItemWorking ? 'Working....' : item.preview}
+                          <p className="text-[11px] text-theme-text-muted truncate mt-0.5">
+                            {item.preview}
                           </p>
                         </div>
                       </div>
