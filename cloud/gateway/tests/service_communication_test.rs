@@ -24,6 +24,7 @@ async fn test_cloud_service_communicates_with_application_crates() {
     let mut config = AppConfig::default();
     config.daemon.server_url = gateway_url.clone();
     config.daemon.heartbeat_interval_secs = 1;
+    config.daemon.auth_token = Some(frostfire_gateway::auth::DEFAULT_DEV_TENANT_TOKEN.into());
 
     let daemon_root = temp_dir.clone();
     let daemon_config = config.clone();
@@ -165,6 +166,7 @@ async fn test_cloud_gateway_evaluates_user_prompt_and_returns_tool_frames() {
 
     // 2. Connect TunnelClient from application track (zero API key on client)
     let tunnel_cfg = frostfire_tunnel::TunnelConfig::new(gateway.url(), "prompt-test-agent")
+        .with_auth_token(frostfire_gateway::auth::DEFAULT_DEV_TENANT_TOKEN)
         .with_connect_timeout(Duration::from_secs(5));
     let mut client = frostfire_tunnel::TunnelClient::connect(tunnel_cfg)
         .await

@@ -37,7 +37,7 @@ impl DaemonService {
         info!("Starting Frostfire Daemon service for workspace: {:?}", self.workspace_root);
         info!("Connecting outbound tunnel to: {}", self.config.daemon.server_url);
 
-        let tunnel_config = TunnelConfig::new(&self.config.daemon.server_url, &self.agent_id)
+        let mut tunnel_config = TunnelConfig::new(&self.config.daemon.server_url, &self.agent_id)
             .with_heartbeat_interval(Some(Duration::from_secs(self.config.daemon.heartbeat_interval_secs)))
             .with_reconnect_policy(
                 Duration::from_millis(500),
@@ -45,6 +45,12 @@ impl DaemonService {
                 1.5,
                 None,
             );
+
+        let auth_token = self.config.daemon.auth_token.clone()
+            .or_else(|| std::env::var("FROSTFIRE_TENANT_TOKEN").ok());
+        if let Some(token) = auth_token {
+            tunnel_config = tunnel_config.with_auth_token(token);
+        }
 
         let mut tunnel = TunnelClient::start(tunnel_config)?;
         let client_tx = tunnel.sender();

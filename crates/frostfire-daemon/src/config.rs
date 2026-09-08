@@ -57,6 +57,8 @@ pub struct DaemonConfig {
     pub heartbeat_interval_secs: u64,
     #[serde(default = "default_reconnect_backoff")]
     pub reconnect_max_backoff_secs: u64,
+    #[serde(default)]
+    pub auth_token: Option<String>,
 }
 
 impl Default for DaemonConfig {
@@ -65,6 +67,7 @@ impl Default for DaemonConfig {
             server_url: default_server_url(),
             heartbeat_interval_secs: default_heartbeat_interval(),
             reconnect_max_backoff_secs: default_reconnect_backoff(),
+            auth_token: None,
         }
     }
 }

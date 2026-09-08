@@ -37,6 +37,17 @@ aws cloudformation deploy \
 - **ECS Fargate**: Serverless containers running in isolated VPC subnets with auto-recovery.
 - **CloudWatch Logs**: Centralized structured logging for gateway events.
 
+### AWS Lambda MicroVM Runtime (Per-User Firecracker Isolation)
+Deploy containerized agent runners directly to AWS Lambda leveraging native Firecracker microVM execution environments per user with response streaming:
+
+```bash
+bash scripts/deploy-lambda-microvm.sh frostfire-lambda-prod us-east-1 frostfire-lambda
+```
+
+- **Dedicated Firecracker Sandbox**: Each invocation runs in a dedicated Firecracker microVM instance with up to 10 GB RAM (6 vCPUs) and 10 GB ephemeral `/tmp` storage.
+- **Response Streaming**: Configured with AWS Lambda Web Adapter (`AWS_LWA_INVOKE_MODE=response_stream`) and Lambda Function URLs for real-time PTY/terminal streaming.
+- **Zero Idle Cost**: On-demand scaling from 0 to thousands of concurrent users with zero idle compute costs.
+
 ---
 
 ## 3. Google Cloud Platform (GCP)

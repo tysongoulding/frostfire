@@ -1,0 +1,36 @@
+diff --git a/scripts/cloud-start.ps1 b/scripts/cloud-start.ps1
+--- a/scripts/cloud-start.ps1
++++ b/scripts/cloud-start.ps1
+@@ -33,7 +33,7 @@ if (-not $InstanceId -and $StackName) {
+ if (-not $InstanceId -and $NameTag) {
+     $ec2 = (aws ec2 describe-instances --region $Region --filters "Name=tag:Name,Values=$NameTag" "Name=instance-state-name,Values=pending,running,stopping,stopped" --query "Reservations[].Instances[].InstanceId" --output text 2>$null)
+     if ($ec2 -and $ec2 -ne "None" -and -not $ec2.StartsWith("An error occurred")) {
+-        $ids = $ec2 -split "\s+" | Where-Object { $_ -match '^i-[0-9a-f]{8,17}$' }
++        $ids = @($ec2 -split "\s+" | Where-Object { $_ -match '^i-[0-9a-f]{8,17}$' })
+         if ($ids.Count -ge 1) { $InstanceId = $ids[0] }
+     }
+ }
+diff --git a/scripts/cloud-status.ps1 b/scripts/cloud-status.ps1
+--- a/scripts/cloud-status.ps1
++++ b/scripts/cloud-status.ps1
+@@ -33,7 +33,7 @@ if (-not $InstanceId -and $StackName) {
+ if (-not $InstanceId -and $NameTag) {
+     $ec2 = (aws ec2 describe-instances --region $Region --filters "Name=tag:Name,Values=$NameTag" "Name=instance-state-name,Values=pending,running,stopping,stopped" --query "Reservations[].Instances[].InstanceId" --output text 2>$null)
+     if ($ec2 -and $ec2 -ne "None" -and -not $ec2.StartsWith("An error occurred")) {
+-        $ids = $ec2 -split "\s+" | Where-Object { $_ -match '^i-[0-9a-f]{8,17}$' }
++        $ids = @($ec2 -split "\s+" | Where-Object { $_ -match '^i-[0-9a-f]{8,17}$' })
+         if ($ids.Count -ge 1) { $InstanceId = $ids[0] }
+     }
+ }
+diff --git a/scripts/cloud-stop.ps1 b/scripts/cloud-stop.ps1
+--- a/scripts/cloud-stop.ps1
++++ b/scripts/cloud-stop.ps1
+@@ -34,7 +34,7 @@ if (-not $InstanceId -and $StackName) {
+ if (-not $InstanceId -and $NameTag) {
+     $ec2 = (aws ec2 describe-instances --region $Region --filters "Name=tag:Name,Values=$NameTag" "Name=instance-state-name,Values=pending,running,stopping,stopped" --query "Reservations[].Instances[].InstanceId" --output text 2>$null)
+     if ($ec2 -and $ec2 -ne "None" -and -not $ec2.StartsWith("An error occurred")) {
+-        $ids = $ec2 -split "\s+" | Where-Object { $_ -match '^i-[0-9a-f]{8,17}$' }
++        $ids = @($ec2 -split "\s+" | Where-Object { $_ -match '^i-[0-9a-f]{8,17}$' })
+         if ($ids.Count -ge 1) { $InstanceId = $ids[0] }
+     }
+ }

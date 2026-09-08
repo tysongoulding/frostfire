@@ -47,32 +47,65 @@ RUN mkdir -p /workspace \
              /tmp/sand-novnc-tokens.d \
              /tmp/sand-window-tokens.d \
              /tmp/.X11-unix \
+             /tmp/xdg-runtime-box \
              /home/box/chrome-profile/Default \
              /home/box/chrome-profile-2/Default \
              /home/box/chrome-profile-3/Default \
              /workspace/teach-sessions \
-             /etc/opt/chrome/policies/managed && \
+             /cloud/microvm/webauthn-proxy \
+             /etc/opt/chrome/policies/managed \
+             /etc/opt/chrome/native-messaging-hosts \
+             /etc/chromium/policies/managed \
+             /etc/chromium/native-messaging-hosts && \
     chown -R box:box /workspace \
                      /exec-daemon \
                      /tmp/sand-novnc-tokens.d \
                      /tmp/sand-window-tokens.d \
                      /tmp/.X11-unix \
+                     /tmp/xdg-runtime-box \
                      /home/box/chrome-profile* \
-                     /workspace/teach-sessions && \
-    chmod 1777 /tmp/.X11-unix /tmp/sand-novnc-tokens.d /tmp/sand-window-tokens.d
+                     /workspace/teach-sessions \
+                     /cloud/microvm/webauthn-proxy && \
+    chmod 1777 /tmp/.X11-unix /tmp/sand-novnc-tokens.d /tmp/sand-window-tokens.d /tmp/xdg-runtime-box
 
 # 4. Copy supervisor and session management scripts into /usr/local/bin
+COPY scripts/sand-exit-watch /usr/local/bin/sand-exit-watch
+COPY scripts/box-cgroups.sh /usr/local/bin/box-cgroups.sh
+COPY scripts/init-overlay /usr/local/bin/init-overlay
 COPY scripts/start-desktop.sh /usr/local/bin/start-desktop
 COPY scripts/sand-window-router.mjs /usr/local/bin/sand-window-router.mjs
 COPY scripts/cdp-cookies.mjs /usr/local/bin/cdp-cookies.mjs
 COPY scripts/link-chrome-session.sh /usr/local/bin/link-chrome-session
 COPY scripts/teach-session-recorder.sh /usr/local/bin/teach-session-recorder
 
-RUN chmod +x /usr/local/bin/start-desktop \
+# WebAuthn Inverted Proxy Extension Assets
+COPY webauthn-proxy /cloud/microvm/webauthn-proxy
+RUN chown -R box:box /cloud/microvm/webauthn-proxy
+
+# Chrome and Chromium Enterprise Policies
+COPY etc-policies/policies/managed/frostfire-webauthn.json /etc/opt/chrome/policies/managed/frostfire-webauthn.json
+COPY etc-policies/policies/managed/frostfire-webauthn.json /etc/chromium/policies/managed/frostfire-webauthn.json
+
+# Chrome and Chromium Native Messaging Host Manifests
+COPY etc-policies/native-messaging-hosts/io.frostfire.agent.webauthn_proxy.json /etc/opt/chrome/native-messaging-hosts/io.frostfire.agent.webauthn_proxy.json
+COPY etc-policies/native-messaging-hosts/io.frostfire.agent.webauthn_proxy.json /etc/chromium/native-messaging-hosts/io.frostfire.agent.webauthn_proxy.json
+
+# Native Messaging Host Executable Wrapper, Bridge, and In-Box Bridge
+COPY bin/frostfire-webauthn-proxy-host /usr/local/bin/frostfire-webauthn-proxy-host
+COPY bin/webauthn-proxy-host.mjs /usr/local/bin/webauthn-proxy-host.mjs
+COPY bin/sand-webauthn-bridge.mjs /usr/local/bin/sand-webauthn-bridge.mjs
+
+RUN chmod +x /usr/local/bin/sand-exit-watch \
+             /usr/local/bin/box-cgroups.sh \
+             /usr/local/bin/init-overlay \
+             /usr/local/bin/start-desktop \
              /usr/local/bin/sand-window-router.mjs \
              /usr/local/bin/cdp-cookies.mjs \
              /usr/local/bin/link-chrome-session \
-             /usr/local/bin/teach-session-recorder
+             /usr/local/bin/teach-session-recorder \
+             /usr/local/bin/frostfire-webauthn-proxy-host \
+             /usr/local/bin/webauthn-proxy-host.mjs \
+             /usr/local/bin/sand-webauthn-bridge.mjs
 
 # 5. Chrome launch wrapper for display isolation and remote CDP debugging
 RUN cat << 'EOF' > /usr/local/bin/box-chrome
@@ -104,6 +137,7 @@ RUN chmod +x /usr/local/bin/box-chrome
 WORKDIR /workspace
 USER box
 
-EXPOSE 1337 1338 1339 5901 5902 5903 6080 6081 8790 8791 9223 9224 9225
+EXPOSE 1337 1338 1339 1340 5901 5902 5903 6080 6081 8790 8791 9223 9224 9225
+
 
 CMD ["/usr/local/bin/start-desktop"]

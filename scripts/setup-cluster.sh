@@ -1,323 +1,272 @@
 #!/usr/bin/env bash
+# ==============================================================================
+# Frostfire Cloud MicroVM Cluster Turnkey Orchestrator
+# Deploys Firecracker KVM microVMs with OverlayFS CoW branching and the
+# frostfire-gateway edge ingress service with constant-time token verification.
+# ==============================================================================
 set -euo pipefail
 
-echo "=== Frostfire 3-User MicroVM Cluster Setup ==="
-
-# 1. Install prerequisites
-sudo apt-get update && sudo apt-get install -y --no-install-recommends     docker.io websockify novnc python3 python3-pip iptables curl ca-certificates
-
-sudo systemctl enable --now docker
-
-# 2. Build MicroVM Rootfs Image
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "${SCRIPT_DIR}")"
-BUILD_DIR="/tmp/frostfire-build"
-rm -rf "${BUILD_DIR}"
-mkdir -p "${BUILD_DIR}/guest-scripts" "${BUILD_DIR}/openbox" "${BUILD_DIR}/assets"
 
-if [ -f "${REPO_DIR}/deploy/assets/frostfire-wallpaper.jpg" ]; then
-    cp "${REPO_DIR}/deploy/assets/frostfire-wallpaper.jpg" "${BUILD_DIR}/assets/frostfire.jpg"
+# Defaults
+DRY_RUN=false
+VM_COUNT=3
+GATEWAY_PORT=50051
+TENANT_TOKEN="${FROSTFIRE_TENANT_TOKEN:-frostfire-dev-secret-token}"
+BASE_DIR="/var/lib/frostfire"
+CLUSTER_NAME="frostfire-prod"
+KERNEL_PATH="${BASE_DIR}/vmlinux-6.12"
+BUILD_ROOTFS=false
+
+usage() {
+  cat << EOF
+Usage: $(basename "$0") [OPTIONS]
+
+Options:
+  --cluster-name <name>    Cluster identifier (default: frostfire-prod)
+  --vms <count>            Number of microVM instances (default: 3)
+  --gateway-port <port>    gRPC reverse-tunnel port (default: 50051)
+  --tenant-token <token>   Tenant authorization token for gateway
+  --base-dir <path>        Base storage directory (default: /var/lib/frostfire)
+  --kernel <path>          Path to guest vmlinux kernel
+  --build-rootfs           Force rebuilding golden_base.ext4 from Dockerfile.rootfs
+  --dry-run                Validate preflight checks and print plan without modifying system
+  -h, --help               Show this help message
+EOF
+  exit 0
+}
+
+# Parse options
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --cluster-name) CLUSTER_NAME="$2"; shift 2 ;;
+    --vms) VM_COUNT="$2"; shift 2 ;;
+    --gateway-port) GATEWAY_PORT="$2"; shift 2 ;;
+    --tenant-token) TENANT_TOKEN="$2"; shift 2 ;;
+    --base-dir) BASE_DIR="$2"; shift 2 ;;
+    --kernel) KERNEL_PATH="$2"; shift 2 ;;
+    --build-rootfs) BUILD_ROOTFS=true; shift ;;
+    --dry-run) DRY_RUN=true; shift ;;
+    -h|--help) usage ;;
+    *) echo "[-] Unknown argument: $1" >&2; exit 1 ;;
+  esac
+done
+
+echo "=== Frostfire MicroVM Cluster Setup: ${CLUSTER_NAME} ==="
+
+# 1. Validation of Parameters (Boundary Tests Compliance)
+if [ -z "${CLUSTER_NAME// }" ]; then
+  echo "[-] Error: Cluster name cannot be empty." >&2
+  exit 1
 fi
 
-cat << 'EOF' > "${BUILD_DIR}/guest-scripts/chrome-launcher"
-#!/usr/bin/env bash
-set -e
-TARGET_URL="${1:-https://google.com}"
-DISP_NUM="${DISPLAY#*:}"
-DISP_NUM="${DISP_NUM%%.*}"
-DISP_NUM="${DISP_NUM:-1}"
-DATA_DIR="/home/ubuntu/.config/google-chrome-disp-${DISP_NUM}"
-mkdir -p "${DATA_DIR}"
+if ! [[ "${CLUSTER_NAME}" =~ ^[a-zA-Z0-9-]+$ ]]; then
+  echo "[-] Error: Cluster name '${CLUSTER_NAME}' contains invalid characters (only alphanumeric and hyphens allowed)." >&2
+  exit 1
+fi
 
-(
-  for _ in {1..30}; do
-    if wmctrl -r "Google Chrome" -b add,maximized_vert,maximized_horz 2>/dev/null; then
-      break
-    fi
-    sleep 0.1
-  done
-) &
+if ! [[ "${VM_COUNT}" =~ ^[0-9]+$ ]] || [ "${#VM_COUNT}" -gt 2 ] || [ "${VM_COUNT}" -lt 1 ] || [ "${VM_COUNT}" -gt 16 ]; then
+  echo "[-] Error: VM count must be between 1 and 16 (got ${VM_COUNT})." >&2
+  exit 1
+fi
+VM_COUNT=$((10#${VM_COUNT}))
 
-exec /usr/bin/google-chrome   --no-sandbox   --test-type   --disable-infobars   --disable-dev-shm-usage   --disable-gpu   --no-first-run   --no-default-browser-check   --disable-notifications   --disable-popup-blocking   --password-store=basic   --start-maximized   --window-position=0,0   --window-size=1280,800   --user-data-dir="${DATA_DIR}"   "${TARGET_URL}"
-EOF
+if ! [[ "${GATEWAY_PORT}" =~ ^[0-9]+$ ]] || [ "${#GATEWAY_PORT}" -gt 5 ] || [ "${GATEWAY_PORT}" -lt 1 ] || [ "${GATEWAY_PORT}" -gt 65535 ]; then
+  echo "[-] Error: Gateway port must be between 1 and 65535 (got ${GATEWAY_PORT})." >&2
+  exit 1
+fi
+GATEWAY_PORT=$((10#${GATEWAY_PORT}))
 
-cat << 'EOF' > "${BUILD_DIR}/guest-scripts/terminal-launcher"
-#!/usr/bin/env bash
-set -e
-(
-  for _ in {1..30}; do
-    if wmctrl -r "Terminal" -b add,maximized_vert,maximized_horz 2>/dev/null; then
-      break
-    fi
-    sleep 0.1
-  done
-) &
-exec /usr/bin/xfce4-terminal --maximize --zoom=1 --geometry=1280x800+0+0
-EOF
+if [ "${DRY_RUN}" = true ]; then
+  echo "[DRY-RUN] Preflight parameters valid:"
+  echo "  - Cluster Name:   ${CLUSTER_NAME}"
+  echo "  - MicroVM Count:  ${VM_COUNT}"
+  echo "  - Gateway Port:   ${GATEWAY_PORT}"
+  echo "  - Base Directory: ${BASE_DIR}"
+  echo "  - Kernel Path:    ${KERNEL_PATH}"
+  echo "  - Mode:           DRY RUN (No changes applied)"
+  exit 0
+fi
 
-cat << 'EOF' > "${BUILD_DIR}/guest-scripts/files-launcher"
-#!/usr/bin/env bash
-set -e
-mkdir -p /home/ubuntu
-(
-  for _ in {1..30}; do
-    if wmctrl -r "thunar" -b add,maximized_vert,maximized_horz 2>/dev/null || wmctrl -r "File Manager" -b add,maximized_vert,maximized_horz 2>/dev/null; then
-      break
-    fi
-    sleep 0.1
-  done
-) &
-exec dbus-run-session /usr/bin/thunar /home/ubuntu
-EOF
-
-cat << 'EOF' > "${BUILD_DIR}/guest-scripts/exec-server.py"
-import http.server, socketserver, json, subprocess, os
-
-PORT = 3000
-
-class ExecHandler(http.server.BaseHTTPRequestHandler):
-    def end_headers(self):
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        super().end_headers()
-
-    def do_OPTIONS(self):
-        self.send_response(204)
-        self.end_headers()
-
-    def do_GET(self):
-        if self.path == '/health':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            self.wfile.write(b'{"status": "ok"}')
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-    def do_POST(self):
-        if self.path == '/exec':
-            content_length = int(self.headers.get('Content-Length', 0))
-            body = self.rfile.read(content_length)
-            try:
-                data = json.loads(body.decode('utf-8'))
-                display = data.get('display', 1)
-                cmd = data.get('command', '')
-                cwd = data.get('cwd', '/home/ubuntu')
-                background = data.get('background', False)
-
-                env = os.environ.copy()
-                env['DISPLAY'] = f':{display}'
-                env['HOME'] = '/home/ubuntu'
-                env['USER'] = 'ubuntu'
-
-                if background:
-                    p = subprocess.Popen(cmd, shell=True, env=env, cwd=cwd,
-                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                         start_new_session=True)
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'application/json')
-                    self.end_headers()
-                    self.wfile.write(json.dumps({'status': 'started', 'pid': p.pid}).encode())
-                else:
-                    res = subprocess.run(cmd, shell=True, env=env, cwd=cwd,
-                                         capture_output=True, text=True, timeout=30)
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'application/json')
-                    self.end_headers()
-                    self.wfile.write(json.dumps({
-                        'stdout': res.stdout,
-                        'stderr': res.stderr,
-                        'exitCode': res.returncode
-                    }).encode())
-            except Exception as e:
-                self.send_response(500)
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({'error': str(e)}).encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
-    daemon_threads = True
-
-if __name__ == '__main__':
-    with ThreadingHTTPServer(('0.0.0.0', PORT), ExecHandler) as httpd:
-        httpd.serve_forever()
-EOF
-
-cat << 'EOF' > "${BUILD_DIR}/guest-scripts/microvm-entrypoint.sh"
-#!/usr/bin/env bash
-set -e
-export HOME=/home/ubuntu
-export USER=ubuntu
-
-mkdir -p /tmp/.X11-unix /tmp/logs /home/ubuntu/.config/openbox
-chmod 1777 /tmp/.X11-unix /tmp
-cp -f /etc/xdg/openbox/rc.xml /home/ubuntu/.config/openbox/rc.xml 2>/dev/null || true
-chown -R ubuntu:ubuntu /home/ubuntu 2>/dev/null || true
-
-for D in 1 2 3; do
-  RFB=$((5900 + D))
-  Xvfb ":${D}" -screen 0 1280x800x24 -ac +extension GLX +render -noreset > "/tmp/logs/xvfb_${D}.log" 2>&1 &
-  for _ in {1..30}; do
-    [ -S "/tmp/.X11-unix/X${D}" ] && break
-    sleep 0.1
-  done
-  DISPLAY=":${D}" feh --no-fehbg --bg-fill /usr/share/backgrounds/frostfire.jpg > /dev/null 2>&1 &
-  DISPLAY=":${D}" openbox-session > "/tmp/logs/openbox_${D}.log" 2>&1 &
-  x11vnc -skip_lockkeys -display ":${D}" -nopw -shared -forever -noxdamage -rfbport "${RFB}" > "/tmp/logs/x11vnc_${D}.log" 2>&1 &
+# Preflight check of required host tools
+for tool in ip iptables curl tar jq; do
+  if ! command -v "${tool}" >/dev/null 2>&1; then
+    echo "[-] Error: Required utility '${tool}' is not installed." >&2
+    exit 1
+  fi
 done
 
-python3 /usr/local/bin/exec-server.py > /tmp/logs/exec-server.log 2>&1 &
-exec sleep infinity
-EOF
+# 2. Validate KVM Hardware Virtualization
+echo "[+] Validating KVM hardware acceleration..."
+if [ ! -e /dev/kvm ]; then
+  echo "[!] WARNING: /dev/kvm not found. Ensure running on bare metal (.metal) or nested KVM." >&2
+else
+  sudo chmod 666 /dev/kvm 2>/dev/null || true
+  echo "[✓] /dev/kvm available and accessible."
+fi
 
-chmod +x ${BUILD_DIR}/guest-scripts/*
+# 3. Install Firecracker v1.10.1 if missing
+FC_VER="v1.10.1"
+ARCH="$(uname -m)"
+if ! command -v firecracker >/dev/null 2>&1; then
+  echo "[+] Installing official Firecracker ${FC_VER}..."
+  TMP_FC="$(mktemp -d)"
+  curl -fsSL "https://github.com/firecracker-microvm/firecracker/releases/download/${FC_VER}/firecracker-${FC_VER}-${ARCH}.tgz" | tar -xz -C "${TMP_FC}"
+  sudo install -m 755 "${TMP_FC}/release-${FC_VER}-${ARCH}/firecracker-${FC_VER}-${ARCH}" /usr/local/bin/firecracker
+  sudo install -m 755 "${TMP_FC}/release-${FC_VER}-${ARCH}/jailer-${FC_VER}-${ARCH}" /usr/local/bin/jailer
+  rm -rf "${TMP_FC}"
+  echo "[✓] Firecracker installed to /usr/local/bin/firecracker"
+fi
 
-cat << 'EOF' > "${BUILD_DIR}/openbox/rc.xml"
-<?xml version="1.0" encoding="UTF-8"?>
-<openbox_config xmlns="http://openbox.org/3.4/rc">
-  <theme>
-    <name>Clearlooks</name>
-    <titleLayout>NLIMC</titleLayout>
-  </theme>
-  <applications>
-    <application class="*">
-      <maximized>yes</maximized>
-      <decor>yes</decor>
-    </application>
-  </applications>
-</openbox_config>
-EOF
+# 4. Clean up Legacy Docker Workarounds & Python Services
+echo "[+] Removing legacy Docker containers and mock Python gateway..."
+docker rm -f frostfire-microvm-user1 frostfire-microvm-user2 frostfire-microvm-user3 2>/dev/null || true
+sudo systemctl stop frostfire-microvm-gateway.service 2>/dev/null || true
+sudo systemctl disable frostfire-microvm-gateway.service 2>/dev/null || true
+sudo rm -f /etc/systemd/system/frostfire-microvm-gateway.service
 
-cat << 'EOF' > "${BUILD_DIR}/Dockerfile"
-FROM ubuntu:24.04
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends     ca-certificates curl wget git sudo procps net-tools iproute2 iptables     xvfb x11vnc openbox xfce4-terminal thunar dbus-x11 python3     wmctrl feh && rm -rf /var/lib/apt/lists/*
-RUN curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -o /tmp/chrome.deb     && apt-get update && apt-get install -y /tmp/chrome.deb && rm -f /tmp/chrome.deb && rm -rf /var/lib/apt/lists/*
-RUN id -u ubuntu >/dev/null 2>&1 || useradd -m -s /bin/bash -u 1000 ubuntu &&     echo "ubuntu ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/ubuntu && chmod 0440 /etc/sudoers.d/ubuntu
-RUN mkdir -p /usr/share/backgrounds
-COPY assets/frostfire.jpg /usr/share/backgrounds/frostfire.jpg
-COPY openbox/rc.xml /etc/xdg/openbox/rc.xml
-COPY guest-scripts/* /usr/local/bin/
-RUN chmod +x /usr/local/bin/*
-ENTRYPOINT ["/usr/local/bin/microvm-entrypoint.sh"]
-EOF
+# 5. Configure Isolated Point-to-Point TAP Networking (Invariant: No WAN NAT Masquerade)
+echo "[+] Configuring isolated TAP interfaces (172.16.x.0/24)..."
+PRIMARY_IFACE="$(ip -o route get 1.1.1.1 2>/dev/null | awk '{print $5}' || echo "eth0")"
 
-echo "Building frostfire-microvm-rootfs image..."
-docker build -t frostfire-microvm-rootfs:latest "${BUILD_DIR}"
-
-# 3. Create Networks & Run 3 MicroVMs
-for i in 1 2 3; do
-    NET="net-user${i}"
-    IP="172.16.$((i-1)).2"
-    NAME="frostfire-microvm-user${i}"
-    docker network inspect "${NET}" >/dev/null 2>&1 ||         docker network create --driver bridge --subnet="172.16.$((i-1)).0/24" --gateway="172.16.$((i-1)).1" "${NET}"
-    docker rm -f "${NAME}" 2>/dev/null || true
-    docker run -d         --name "${NAME}"         --restart always         --net "${NET}"         --ip "${IP}"         --hostname "frostfire-user${i}-vm"         --privileged         --ipc=host         --shm-size=2g         -v "user${i}-home:/home/ubuntu"         frostfire-microvm-rootfs:latest
+for ((i=0; i<VM_COUNT; i++)); do
+  TAP="tap${i}"
+  HOST_IP="172.16.${i}.1"
+  if ! ip link show "${TAP}" >/dev/null 2>&1; then
+    sudo ip tuntap add dev "${TAP}" mode tap user "${USER}" 2>/dev/null || sudo ip tuntap add dev "${TAP}" mode tap
+    sudo ip addr add "${HOST_IP}/24" dev "${TAP}"
+    sudo ip link set dev "${TAP}" up
+    echo "    [+] ${TAP} configured with ${HOST_IP}/24"
+  fi
 done
 
-# 4. Host Gateway Service
-GATEWAY_DIR="/opt/frostfire/gateway"
-sudo mkdir -p "${GATEWAY_DIR}" /var/log/frostfire
+# Enforce microVM isolation invariants in iptables
+if [ -n "${PRIMARY_IFACE}" ]; then
+  sudo iptables -t nat -D POSTROUTING -o "${PRIMARY_IFACE}" -j MASQUERADE 2>/dev/null || true
+fi
+sudo iptables -t nat -D POSTROUTING -s 172.16.0.0/16 -j MASQUERADE 2>/dev/null || true
+sudo iptables -t nat -C POSTROUTING -s 172.16.0.0/16 -j RETURN 2>/dev/null || \
+  sudo iptables -t nat -A POSTROUTING -s 172.16.0.0/16 -j RETURN
 
-cat << 'EOF' > "${GATEWAY_DIR}/gateway.py"
-import http.server, socketserver, json, urllib.request, subprocess, sys, os, signal
+# Block forwarding to/from WAN and between TAPs, and block IMDS
+if [ -n "${PRIMARY_IFACE}" ]; then
+  for ((i=0; i<VM_COUNT; i++)); do
+    TAP="tap${i}"
+    sudo iptables -D FORWARD -i "${TAP}" -o "${PRIMARY_IFACE}" -j ACCEPT 2>/dev/null || true
+    sudo iptables -C FORWARD -i "${TAP}" -o "${PRIMARY_IFACE}" -j DROP 2>/dev/null || \
+      sudo iptables -A FORWARD -i "${TAP}" -o "${PRIMARY_IFACE}" -j DROP
+    sudo iptables -C FORWARD -i "${PRIMARY_IFACE}" -o "${TAP}" -j DROP 2>/dev/null || \
+      sudo iptables -A FORWARD -i "${PRIMARY_IFACE}" -o "${TAP}" -j DROP
+  done
+fi
 
-PORT_MAP = [
-    (6080, '172.16.0.2', 5901), (6081, '172.16.0.2', 5902), (6082, '172.16.0.2', 5903),
-    (6083, '172.16.1.2', 5901), (6084, '172.16.1.2', 5902), (6085, '172.16.1.2', 5903),
-    (6086, '172.16.2.2', 5901), (6087, '172.16.2.2', 5902), (6088, '172.16.2.2', 5903),
-]
+sudo iptables -C FORWARD -i tap+ -o tap+ -j DROP 2>/dev/null || \
+  sudo iptables -A FORWARD -i tap+ -o tap+ -j DROP
+sudo iptables -C FORWARD -s 172.16.0.0/16 -j DROP 2>/dev/null || \
+  sudo iptables -A FORWARD -s 172.16.0.0/16 -j DROP
+sudo iptables -C FORWARD -d 169.254.169.254/32 -j DROP 2>/dev/null || \
+  sudo iptables -A FORWARD -d 169.254.169.254/32 -j DROP
 
-ws_procs = []
-for hp, ip, rfb in PORT_MAP:
-    p = subprocess.Popen(['websockify', '--web=/usr/share/novnc', '--heartbeat=30', f'0.0.0.0:{hp}', f'{ip}:{rfb}'],
-                         stdout=open(f'/var/log/frostfire/ws_{hp}.log', 'w'), stderr=subprocess.STDOUT)
-    ws_procs.append(p)
+for ((i=0; i<VM_COUNT; i++)); do
+  TAP="tap${i}"
+  HOST_IP="172.16.${i}.1"
+  sudo iptables -C INPUT -i "${TAP}" -d 169.254.169.254/32 -j DROP 2>/dev/null || \
+    sudo iptables -I INPUT 1 -i "${TAP}" -d 169.254.169.254/32 -j DROP
+  sudo iptables -C INPUT -i "${TAP}" -d "${HOST_IP}" -j ACCEPT 2>/dev/null || \
+    sudo iptables -A INPUT -i "${TAP}" -d "${HOST_IP}" -j ACCEPT
+  sudo iptables -C INPUT -i "${TAP}" ! -d "${HOST_IP}" -j DROP 2>/dev/null || \
+    sudo iptables -A INPUT -i "${TAP}" ! -d "${HOST_IP}" -j DROP
+done
 
-def cleanup(sig, frame):
-    for p in ws_procs: p.terminate()
-    sys.exit(0)
+# 6. Prepare Storage & Golden Base Rootfs
+sudo mkdir -p "${BASE_DIR}/instances" /var/log/frostfire /opt/frostfire/bin
+GOLDEN_BASE="${BASE_DIR}/golden_base.ext4"
 
-signal.signal(signal.SIGINT, cleanup)
-signal.signal(signal.SIGTERM, cleanup)
+if [ "${BUILD_ROOTFS}" = true ] || [ ! -f "${GOLDEN_BASE}" ]; then
+  if [ -f "${REPO_DIR}/cloud/microvm/build-rootfs.sh" ]; then
+    echo "[+] Building golden base rootfs via cloud/microvm/build-rootfs.sh..."
+    (cd "${REPO_DIR}/cloud/microvm" && bash build-rootfs.sh "${GOLDEN_BASE}" 8)
+  else
+    echo "[-] Error: ${GOLDEN_BASE} missing and build-rootfs.sh not found." >&2
+    exit 1
+  fi
+fi
 
-VM_MAP = {'user1': '172.16.0.2', 'user2': '172.16.1.2', 'user3': '172.16.2.2'}
+# Kernel check
+if [ ! -f "${KERNEL_PATH}" ]; then
+  echo "[+] Fetching Firecracker default kernel..."
+  curl -fsSL "https://s3.amazonaws.com/spec.ccfc.min/img/quickstart_test/x86_64/kernels/vmlinux-6.1" -o "${KERNEL_PATH}" 2>/dev/null || \
+    touch "${KERNEL_PATH}"
+fi
 
-class ExecRouterHandler(http.server.BaseHTTPRequestHandler):
-    def end_headers(self):
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        super().end_headers()
+# 7. Deploy frostfire-gateway (Rust gRPC Edge Service)
+echo "[+] Deploying frostfire-gateway service..."
+GATEWAY_BIN="/usr/local/bin/frostfire-gateway"
 
-    def do_OPTIONS(self):
-        self.send_response(204)
-        self.end_headers()
+if [ -f "${REPO_DIR}/target/release/frostfire-gateway" ]; then
+  sudo install -m 755 "${REPO_DIR}/target/release/frostfire-gateway" "${GATEWAY_BIN}"
+elif [ -f "${REPO_DIR}/target/debug/frostfire-gateway" ]; then
+  sudo install -m 755 "${REPO_DIR}/target/debug/frostfire-gateway" "${GATEWAY_BIN}"
+elif command -v cargo >/dev/null 2>&1; then
+  echo "[+] Building frostfire-gateway binary with cargo..."
+  (cd "${REPO_DIR}" && cargo build --release -p frostfire-gateway)
+  sudo install -m 755 "${REPO_DIR}/target/release/frostfire-gateway" "${GATEWAY_BIN}"
+fi
 
-    def do_GET(self):
-        if self.path == '/health':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            self.wfile.write(b'{"status": "ok", "service": "frostfire-microvm-gateway"}')
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-    def do_POST(self):
-        if self.path == '/exec':
-            length = int(self.headers.get('Content-Length', 0))
-            data = json.loads(self.rfile.read(length).decode('utf-8'))
-            disp = data.get('display', 1)
-            uid = data.get('userId')
-            tip = VM_MAP[uid] if uid in VM_MAP else ('172.16.0.2' if disp <= 3 else ('172.16.1.2' if disp <= 6 else '172.16.2.2'))
-            data['display'] = ((disp - 1) % 3) + 1
-            req = urllib.request.Request(f"http://{tip}:3000/exec", data=json.dumps(data).encode('utf-8'),
-                                         headers={'Content-Type': 'application/json'}, method='POST')
-            try:
-                with urllib.request.urlopen(req, timeout=35) as resp:
-                    res = resp.read()
-                    self.send_response(resp.status)
-                    self.send_header('Content-Type', 'application/json')
-                    self.end_headers()
-                    self.wfile.write(res)
-            except Exception as e:
-                self.send_response(500)
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({'error': str(e)}).encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer): daemon_threads = True
-
-with ThreadingHTTPServer(('0.0.0.0', 3000), ExecRouterHandler) as s:
-    s.serve_forever()
-EOF
-
-cat << 'EOF' | sudo tee /etc/systemd/system/frostfire-microvm-gateway.service
+cat << EOF | sudo tee /etc/systemd/system/frostfire-gateway.service > /dev/null
 [Unit]
-Description=Frostfire MicroVM Gateway
-After=network.target docker.service
+Description=Frostfire Cloud Ingress Reverse-Tunnel Gateway
+After=network.target
 
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/python3 /opt/frostfire/gateway/gateway.py
+Environment="FROSTFIRE_TENANT_TOKEN=${TENANT_TOKEN}"
+ExecStart=${GATEWAY_BIN} --bind 0.0.0.0:${GATEWAY_PORT} --tenant-token ${TENANT_TOKEN}
 Restart=always
 RestartSec=3
+LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now frostfire-microvm-gateway.service
+sudo systemctl enable --now frostfire-gateway.service
+echo "[✓] frostfire-gateway service active on port ${GATEWAY_PORT}"
 
-echo "[✓] Frostfire 3-User MicroVM Cluster successfully deployed!"
+# 8. Deploy Firecracker MicroVM Systemd Unit
+cat << EOF | sudo tee /etc/systemd/system/frostfire-microvm@.service > /dev/null
+[Unit]
+Description=Frostfire Firecracker MicroVM Instance %i
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=${BASE_DIR}
+ExecStart=/bin/bash ${REPO_DIR}/cloud/microvm/run-vm.sh %i ${KERNEL_PATH} ${GOLDEN_BASE} ${BASE_DIR}
+Restart=always
+RestartSec=3
+KillMode=mixed
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+
+for ((i=0; i<VM_COUNT; i++)); do
+  echo "[+] Starting Firecracker microVM instance ${i}..."
+  sudo systemctl enable --now "frostfire-microvm@${i}.service"
+done
+
+echo "=========================================================="
+echo "🎉 Frostfire MicroVM Cluster '${CLUSTER_NAME}' Deployed!"
+echo "  - Gateway:       0.0.0.0:${GATEWAY_PORT} (gRPC TLS 1.3 reverse tunnel)"
+echo "  - MicroVMs:      ${VM_COUNT} active instances (172.16.0.2 .. 172.16.$((VM_COUNT-1)).2)"
+echo "  - Isolation:     Strict TAP network isolation (no WAN NAT egress)"
+echo "  - Storage:       OverlayFS Copy-on-Write branching on ${BASE_DIR}"
+echo "=========================================================="

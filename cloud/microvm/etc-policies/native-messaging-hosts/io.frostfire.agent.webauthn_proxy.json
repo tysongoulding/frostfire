@@ -1,0 +1,9 @@
+{
+  "name": "io.frostfire.agent.webauthn_proxy",
+  "description": "Inverted WebAuthn ceremony proxy bridge for Frostfire MicroVM",
+  "path": "/usr/local/bin/frostfire-webauthn-proxy-host",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://pkjakndclmokfbgfnpgjieoebnbghhgb/"
+  ]
+}

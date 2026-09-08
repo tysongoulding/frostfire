@@ -5,17 +5,18 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::Stream;
 use tonic::{Request, Response, Status, Streaming};
 
-
 use frostfire_proto::tunnel::{
     self, agent_tunnel_service_server::AgentTunnelService, TunnelClientFrame, TunnelServerFrame,
 };
 
 use frostfire_orchestrator::AgentTurnEngine;
+use crate::auth::TenantAuthenticator;
 use crate::session::SessionRegistry;
 
 pub struct GatewayTunnelService {
     registry: Arc<SessionRegistry>,
     client_frame_tx: Option<mpsc::Sender<TunnelClientFrame>>,
+    authenticator: Arc<TenantAuthenticator>,
     turn_engine: Option<Arc<AgentTurnEngine>>,
 }
 
@@ -23,12 +24,25 @@ impl GatewayTunnelService {
     pub fn new(
         registry: Arc<SessionRegistry>,
         client_frame_tx: Option<mpsc::Sender<TunnelClientFrame>>,
+        authenticator: Arc<TenantAuthenticator>,
     ) -> Self {
         Self {
             registry,
             client_frame_tx,
+            authenticator,
             turn_engine: None,
         }
+    }
+
+    pub fn new_with_default_auth(
+        registry: Arc<SessionRegistry>,
+        client_frame_tx: Option<mpsc::Sender<TunnelClientFrame>>,
+    ) -> Self {
+        Self::new(
+            registry,
+            client_frame_tx,
+            Arc::new(TenantAuthenticator::default()),
+        )
     }
 
     pub fn with_turn_engine(mut self, engine: Arc<AgentTurnEngine>) -> Self {
@@ -45,6 +59,10 @@ impl AgentTunnelService for GatewayTunnelService {
         &self,
         request: Request<Streaming<TunnelClientFrame>>,
     ) -> Result<Response<Self::OpenTunnelStream>, Status> {
+        // 1. Enforce constant-time tenant authentication before registering session or allocating resources
+        self.authenticator.authenticate_metadata(request.metadata())?;
+
+        // 2. Extract agent identity header
         let metadata_agent_id = request
             .metadata()
             .get("x-agent-id")
@@ -60,17 +78,21 @@ impl AgentTunnelService for GatewayTunnelService {
 
         tokio::spawn(async move {
             let mut current_agent_id = metadata_agent_id;
+            let mut current_session_id = None;
+
             if let Some(ref agent_id) = current_agent_id {
-                registry.register(agent_id.clone(), out_tx.clone()).await;
+                let sid = registry.register(agent_id.clone(), out_tx.clone()).await;
+                current_session_id = Some(sid);
             }
 
             while let Ok(Some(client_frame)) = in_stream.message().await {
                 let agent_id = client_frame.agent_id.clone();
 
-                // Register session on first frame with valid agent_id
+                // Register session on first frame with valid agent_id if not already registered via metadata
                 if current_agent_id.is_none() && !agent_id.is_empty() {
                     current_agent_id = Some(agent_id.clone());
-                    registry.register(agent_id.clone(), out_tx.clone()).await;
+                    let sid = registry.register(agent_id.clone(), out_tx.clone()).await;
+                    current_session_id = Some(sid);
                 }
 
                 // Auto-reply to Heartbeat pings from clients
@@ -128,9 +150,9 @@ impl AgentTunnelService for GatewayTunnelService {
                 }
             }
 
-            // Client stream ended, unregister
-            if let Some(agent_id) = current_agent_id {
-                registry.unregister(&agent_id).await;
+            // Client stream ended, unregister using session_id to avoid evicting a newly reconnected session
+            if let (Some(agent_id), Some(sid)) = (current_agent_id, current_session_id) {
+                registry.unregister_if_matching(&agent_id, sid).await;
             }
         });
 

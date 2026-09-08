@@ -299,8 +299,13 @@ impl GeminiClient {
         } else if p_lower.contains("kayla") || p_lower.contains("text") || p_lower.contains("message") {
             let msg = if p_lower.contains("bed") {
                 "Ill be coming to bed soon"
-            } else if let Some(idx) = prompt.to_lowercase().find("text kayla") {
-                let rest = prompt[idx + 10..].trim();
+            } else if let Some((idx, _)) = prompt
+                .char_indices()
+                .find(|&(i, _)| {
+                    prompt.get(i..i + 10).is_some_and(|s| s.eq_ignore_ascii_case("text kayla"))
+                })
+            {
+                let rest = prompt.get(idx + 10..).map(|s| s.trim()).unwrap_or("");
                 if rest.is_empty() { "Ill be coming to bed soon" } else { rest }
             } else {
                 "Ill be coming to bed soon"

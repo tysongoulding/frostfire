@@ -2,6 +2,33 @@
 # Headless multi-display supervisor for Frostfire Cloud Agents (Displays :1, :2, :3)
 set -euo pipefail
 
+# Ensure running under sand-exit-watch subreaper supervisor
+if [ -z "${SAND_EXIT_WATCH_ACTIVE:-}" ]; then
+  if [ -x /usr/local/bin/sand-exit-watch ]; then
+    export SAND_EXIT_WATCH_ACTIVE=1
+    exec /usr/local/bin/sand-exit-watch -- "$0" "$@"
+  elif [ -f /usr/local/bin/sand-exit-watch ]; then
+    export SAND_EXIT_WATCH_ACTIVE=1
+    exec python3 /usr/local/bin/sand-exit-watch -- "$0" "$@"
+  elif [ -f "$(dirname "$0")/sand-exit-watch" ]; then
+    export SAND_EXIT_WATCH_ACTIVE=1
+    exec python3 "$(dirname "$0")/sand-exit-watch" -- "$0" "$@"
+  fi
+fi
+
+# Source and initialize cgroups v2 domains and join interactive slice
+if [ -f /usr/local/bin/box-cgroups.sh ]; then
+  # shellcheck source=/dev/null
+  source /usr/local/bin/box-cgroups.sh
+  sand_cgroup_setup
+  sand_cgroup_join interactive
+elif [ -f "$(dirname "$0")/box-cgroups.sh" ]; then
+  # shellcheck source=/dev/null
+  source "$(dirname "$0")/box-cgroups.sh"
+  sand_cgroup_setup
+  sand_cgroup_join interactive
+fi
+
 TOKEN_DIR="/tmp/sand-novnc-tokens.d"
 LOG_DIR="/tmp/frostfire-display-logs"
 rm -rf /tmp/.X*-lock /tmp/.X11-unix/* "${LOG_DIR}/*" 2>/dev/null || true
@@ -60,11 +87,20 @@ spawn_agent_display 3
 echo "[+] Starting session sync background daemon..."
 if [ -f /usr/local/bin/cdp-cookies.mjs ]; then
   node /usr/local/bin/cdp-cookies.mjs > "${LOG_DIR}/cdp-sync.log" 2>&1 &
+elif [ -f "$(dirname "$0")/cdp-cookies.mjs" ]; then
+  node "$(dirname "$0")/cdp-cookies.mjs" > "${LOG_DIR}/cdp-sync.log" 2>&1 &
 fi
 
 echo "[+] Starting window router on port 1339..."
 if [ -f /usr/local/bin/sand-window-router.mjs ]; then
   node /usr/local/bin/sand-window-router.mjs 1339 1337 14000 > "${LOG_DIR}/window-router.log" 2>&1 &
+elif [ -f "$(dirname "$0")/sand-window-router.mjs" ]; then
+  node "$(dirname "$0")/sand-window-router.mjs" 1339 1337 14000 > "${LOG_DIR}/window-router.log" 2>&1 &
+fi
+
+echo "[+] Starting Frostfire Agent Daemon..."
+if [ -x /usr/local/bin/frostfire-daemon ]; then
+  /usr/local/bin/frostfire-daemon > "${LOG_DIR}/frostfire-daemon.log" 2>&1 &
 fi
 
 echo "[✓] Multi-agent display multiplexer running! Ports: 6081 (noVNC), 5901-5903 (VNC)"

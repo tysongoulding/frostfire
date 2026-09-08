@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ==============================================================================
+# Frostfire MicroVM WebAuthn Native Messaging Host Shim
+# Locates the Node.js runtime and executes webauthn-proxy-host.mjs
+# ==============================================================================
+
+# 1. Resolve Node.js runtime binary
+# Precedence: FROSTFIRE_WEBAUTHN_PROXY_NODE -> SAND_WEBAUTHN_PROXY_NODE -> PATH -> well-known locations
+node_bin="${FROSTFIRE_WEBAUTHN_PROXY_NODE:-${SAND_WEBAUTHN_PROXY_NODE:-}}"
+
+if [ -n "${node_bin}" ] && [ ! -x "${node_bin}" ]; then
+	node_bin=""
+fi
+
+if [ -z "${node_bin}" ]; then
+	node_bin="$(command -v node || true)"
+fi
+
+if [ -z "${node_bin}" ] || [ ! -x "${node_bin}" ]; then
+	for candidate in /usr/bin/node /usr/local/bin/node /exec-daemon/node; do
+		if [ -x "${candidate}" ]; then
+			node_bin="${candidate}"
+			break
+		fi
+	done
+fi
+
+if [ -z "${node_bin}" ] || [ ! -x "${node_bin}" ]; then
+	echo "frostfire-webauthn-proxy-host: no node runtime found in PATH or standard paths" >&2
+	exit 1
+fi
+
+# 2. Resolve target JavaScript host script
+# Precedence: FROSTFIRE_WEBAUTHN_HOST_SCRIPT -> /usr/local/bin/webauthn-proxy-host.mjs -> script directory
+host_script="${FROSTFIRE_WEBAUTHN_HOST_SCRIPT:-/usr/local/bin/webauthn-proxy-host.mjs}"
+if [ ! -f "${host_script}" ]; then
+	script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+	if [ -f "${script_dir}/webauthn-proxy-host.mjs" ]; then
+		host_script="${script_dir}/webauthn-proxy-host.mjs"
+	fi
+fi
+
+if [ ! -f "${host_script}" ]; then
+	echo "frostfire-webauthn-proxy-host: host script not found at ${host_script}" >&2
+	exit 1
+fi
+
+# 3. Execute with clean process replacement
+exec "${node_bin}" "${host_script}" "$@"

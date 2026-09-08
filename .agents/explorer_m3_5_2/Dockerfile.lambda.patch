@@ -1,0 +1,117 @@
+diff --git a/cloud/agent/Dockerfile.lambda b/cloud/agent/Dockerfile.lambda
+index 5f208ea..672c21d 100644
+--- a/cloud/agent/Dockerfile.lambda
++++ b/cloud/agent/Dockerfile.lambda
+@@ -1,34 +1,49 @@
+ # ==============================================================================
+ # Frostfire Agent: AWS Lambda MicroVM Container Runtime with Firecracker Isolation
++# Feature F17: Multi-stage Dockerfile packaging Frostfire Agent runtime on Lambda
+ # ==============================================================================
+ 
+-# Stage 1: Retrieve AWS Lambda Web Adapter (LWA) for streaming HTTP/WS support
+-FROM public.ecr.aws/awslambda/aws-lambda-adapter:0.8.4 AS lambda-adapter
++# ------------------------------------------------------------------------------
++# Stage 1: Extract AWS Lambda Web Adapter (LWA) for streaming HTTP/WS support
++# Source: public.ecr.aws/awsgsl/aws-lambda-adapter:0.9.0 (or public.ecr.aws/awslambda/aws-lambda-adapter:0.9.0)
++# ------------------------------------------------------------------------------
++FROM public.ecr.aws/awsgsl/aws-lambda-adapter:0.9.0 AS lambda-adapter
+ 
+-# Stage 2: Rust Builder
++# ------------------------------------------------------------------------------
++# Stage 2: Rust Workspace Builder
++# Uses Debian Bookworm base to ensure strict GLIBC 2.36 ABI compatibility
++# ------------------------------------------------------------------------------
+ FROM rust:1.83-bookworm AS builder
+ WORKDIR /workspace
+ 
+-# Install protobuf compiler & OpenSSL
++# Install build dependencies (Protobuf compiler, OpenSSL development headers, pkg-config)
+ RUN apt-get update && apt-get install -y --no-install-recommends \
+     protobuf-compiler \
+     libssl-dev \
+     pkg-config \
++    build-essential \
++    binutils \
+     && rm -rf /var/lib/apt/lists/*
+ 
+-# Copy workspace manifests
++# Copy workspace dependency manifests and source trees
+ COPY Cargo.toml Cargo.lock ./
+ COPY crates ./crates
+ COPY cloud ./cloud
+ COPY services ./services
+ 
+-# Build production binary for frostfire-agent
++# Build optimized release binary for frostfire-agent
+ RUN cargo build --release --bin frostfire-agent
+ 
+-# Stage 3: Minimal Lambda MicroVM Execution Environment
++# Strip unneeded debug symbols to minimize layer size and speed up container cold start
++RUN strip /workspace/target/release/frostfire-agent
++
++# ------------------------------------------------------------------------------
++# Stage 3: Minimal Lambda MicroVM Runtime Environment
++# Base: debian:bookworm-slim (GLIBC 2.36 compatible, robust utility support)
++# ------------------------------------------------------------------------------
+ FROM debian:bookworm-slim AS runtime
+ 
+-# Install system utilities needed for agent tasks (git, curl, ca-certificates, openssl)
++# Install system runtime utilities required for autonomous agent tasks
+ RUN apt-get update && apt-get install -y --no-install-recommends \
+     ca-certificates \
+     libssl3 \
+@@ -36,21 +51,47 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
+     curl \
+     ripgrep \
+     procps \
+-    && rm -rf /var/lib/apt/lists/*
++    && apt-get clean \
++    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+ 
+-# Copy AWS Lambda Web Adapter extension
++# Install AWS Lambda Web Adapter as both extension and exec-wrapper bootstrap
++# /opt/extensions/lambda-adapter: Discovered by Lambda extension supervisor
++# /opt/bootstrap: Satisfies AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap
+ COPY --from=lambda-adapter /lambda-adapter /opt/extensions/lambda-adapter
++RUN chmod 755 /opt/extensions/lambda-adapter && \
++    mkdir -p /opt && \
++    ln -s /opt/extensions/lambda-adapter /opt/bootstrap
+ 
+-# Copy compiled agent binary
++# Copy compiled and stripped frostfire-agent binary
+ COPY --from=builder /workspace/target/release/frostfire-agent /usr/local/bin/frostfire-agent
++RUN chmod 755 /usr/local/bin/frostfire-agent
++
++# Create unprivileged 'frostfire' user (UID 10001, GID 10001) for non-root execution
++RUN groupadd -g 10001 frostfire && \
++    useradd -u 10001 -g frostfire -m -d /tmp/frostfire -s /bin/bash frostfire
++
++# Create workspace scratchpad directory owned by non-root user
++RUN mkdir -p /workspace && chown -R 10001:10001 /workspace
+ 
+-# Workspace directory for agent sandboxed execution
++# Working directory and execution environment
+ WORKDIR /workspace
++
++# Environment configuration for AWS Lambda Firecracker microVM execution:
++# - HOME / TMPDIR set to /tmp because root filesystem (/) is strictly read-only in Lambda
++# - PORT=8080: Target HTTP port for Lambda Web Adapter reverse proxy
++# - AWS_LWA_INVOKE_MODE=response_stream: Enables chunked response streaming via Function URL
++# - AWS_LWA_READ_TIMEOUT_MS=900000: Aligns with 15-minute Lambda maximum timeout
+ ENV HOME=/tmp \
++    TMPDIR=/tmp \
+     PORT=8080 \
+     AWS_LWA_INVOKE_MODE=response_stream \
+     AWS_LWA_READ_TIMEOUT_MS=900000 \
+-    FROSTFIRE_SAND_MODE=lambda-microvm
++    FROSTFIRE_SAND_MODE=lambda-microvm \
++    RUST_LOG=info,frostfire_agent=debug
++
++# Switch to non-root unprivileged user
++USER 10001:10001
+ 
+-# Firecracker microVM execution entrypoint
+-CMD ["frostfire-agent", "--gateway", "http://127.0.0.1:50051", "--agent-id", "lambda-user"]
++# Entrypoint and default runtime arguments
++ENTRYPOINT ["/usr/local/bin/frostfire-agent"]
++CMD ["--gateway", "http://127.0.0.1:50051", "--agent-id", "lambda-user"]

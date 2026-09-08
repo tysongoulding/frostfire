@@ -1,0 +1,75 @@
+# Orchestrator Progress
+
+Last visited: 2026-09-08T22:20:15Z
+- [x] Received dispatch from Sentinel and initialized state tracking (DISPATCH.md, BRIEFING.md, progress.md)
+- [x] Launch heartbeat cron (task-16)
+- [x] Phase 0: Survey full scope with 3 parallel Explorers/Spec Miners (completed: spec_miner_survey_1, spec_miner_survey_2, explorer_survey_3)
+- [x] Synthesize findings into PROJECT.md (Architecture, Feature Inventory, Milestones, Interface Contracts, Code Layout)
+- [ ] Phase 1: Dual Track Execution:
+  - [x] E2E Testing Track: Completed! (test_writer_e2e_1 published TEST_INFRA.md and TEST_READY.md; 175 tests in frostfire-e2e passing 100%)
+  - [ ] Implementation Track Milestone 1 (Gateway Hardening & Auth):
+    - [x] Explorers completed (explorer_m1_1, explorer_m1_2, explorer_m1_3)
+    - [x] Worker implemented changes (worker_m1_1)
+    - [x] Verification Gate Iteration 1 completed:
+      - reviewer_m1_1 (APPROVE)
+      - reviewer_m1_2 (APPROVE)
+      - challenger_m1_1 (FAIL - UTF-8 char boundary slicing panic in extract_bearer_token)
+      - challenger_m1_2 (FAIL - UTF-8 char boundary slicing panic in extract_bearer_token)
+      - auditor_m1_1 (CLEAN)
+      - GATE RESULT: FAIL (Challengers veto)
+    - [x] Iteration 2:
+      - [x] Fix Explorers completed analysis (explorer_m1_fix_1, explorer_m1_fix_2, explorer_m1_fix_3)
+      - [x] Worker implemented remediation (worker_m1_2: safe slice check, gemini hardening, all tests passed)
+      - [x] Verification Gate Iteration 2 passed:
+        - reviewer_m1_r2_1 (APPROVE)
+        - reviewer_m1_r2_2 (APPROVE)
+        - challenger_m1_r2_1 (APPROVE - 55,184 fuzz tests)
+        - challenger_m1_r2_2 (APPROVE - 12 stress tests, 150 concurrent cycles)
+        - auditor_m1_r2_1 (CLEAN - 0 violations, zero secrets)
+        - GATE RESULT: PASS
+  - [x] Milestone 1 COMPLETE (Cloud Gateway Hardening & Tenant Auth: F1-F5)
+  - [x] Milestone 2 COMPLETE (MicroVM Virtualization Architecture: F6-F12)
+    - [x] Verification Gate Iteration 1 passed:
+      - reviewer_m2_1 (APPROVE)
+      - reviewer_m2_2 (APPROVE)
+      - challenger_m2_1_rep (APPROVE)
+      - challenger_m2_2 (APPROVE)
+      - auditor_m2_1 (CLEAN)
+      - GATE RESULT: PASS
+  - [ ] Implementation Track Milestone 3 (AWS Production Infrastructure & Network Isolation: F13-F15):
+    - [x] Explorers completed (explorer_m3_1, explorer_m3_2, explorer_m3_3)
+    - [x] Worker implemented changes (worker_m3_1: network isolation, script parameterization, setup-cluster.sh modernized, CFN validated)
+    - [x] Verification Gate Iteration 1 completed:
+      - reviewer_m3_1 (APPROVE)
+      - reviewer_m3_2 (APPROVE)
+      - challenger_m3_1 (FAIL - PowerShell Tier 4 scalar truncation, setup-cluster.sh non-integer VM bypass)
+      - challenger_m3_2 (APPROVE)
+      - auditor_m3_1 (CLEAN)
+      - GATE RESULT: FAIL (Challenger veto)
+    - [x] Iteration 2:
+      - [x] Fix Explorers completed analysis (explorer_m3_fix_1, explorer_m3_fix_2, explorer_m3_fix_3)
+      - [x] Remediation worker implemented fixes (worker_m3_2: @(...) wrapping, setup-cluster.sh bounds, oracle 46/46 passed)
+      - [x] Verification Gate Iteration 2 passed:
+        - reviewer_m3_r2_1 (APPROVE)
+        - reviewer_m3_r2_2 (APPROVE)
+        - challenger_m3_r2_1 (APPROVE - 24 tag tests, 27 dryrun permutations passed)
+        - challenger_m3_r2_2 (APPROVE - 35 boundary tests, 46 oracle checks, 8 adversarial tests code 1)
+        - auditor_m3_r2_1 (CLEAN - 0 secrets, 29 adversarial tests passed)
+        - GATE RESULT: PASS
+  - [x] Milestone 3 COMPLETE (AWS Production Infrastructure & Network Isolation: F13-F15)
+  - [x] Milestone 3.5 COMPLETE (AWS Lambda Containerized MicroVM Runtime: F17):
+    - [x] Explorers completed (explorer_m3_5_1, explorer_m3_5_2, explorer_m3_5_3)
+    - [x] Worker implemented changes (worker_m3_5_1: multi-stage Dockerfile.lambda, LWA 0.9.0, /opt/bootstrap symlink, user 10001, lambda-microvm.yaml CFN template, sand-window-router.mjs /health route)
+    - [x] Verification Gate passed:
+      - reviewer_m3_5_1 (APPROVE)
+      - reviewer_m3_5_2 (APPROVE)
+      - challenger_m3_5_1 (APPROVE)
+      - challenger_m3_5_2 (APPROVE)
+      - auditor_m3_5_1 (CLEAN)
+      - GATE RESULT: PASS
+  - [ ] Implementation Track Final Milestone 4 (E2E Integration & Adversarial Hardening: F16):
+    - [x] Phase 1: Pass 100% of E2E test suite (Tiers 1-4: 175/175 tests passed, 0 failures)
+    - [ ] Phase 2: Adversarial Coverage Hardening (Tier 5: in-progress white-box audit and stress tests via challenger_tier5_1 and challenger_tier5_2)
+
+## Iteration Status
+Current iteration: 7 / 32

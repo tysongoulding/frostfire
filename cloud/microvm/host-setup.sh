@@ -23,19 +23,19 @@ sudo install -m 755 "${TMP_DIR}/release-${FIRECRACKER_VERSION}-${ARCH}/jailer-${
 rm -rf "${TMP_DIR}"
 echo "[✓] Installed firecracker $(firecracker --version | head -n1) to /usr/local/bin/firecracker"
 
-echo "=== 3. Setting Up Vanilla TAP Networking & iptables NAT ==="
+echo "=== 3. Setting Up Isolated TAP Networking (172.16.x.0/24) ==="
 # Enable IPv4 forwarding
 sudo sysctl -w net.ipv4.ip_forward=1 > /dev/null
 
 # Primary outbound physical interface
-PRIMARY_IFACE="$(ip -o route get 1.1.1.1 | awk '{print $5}')"
+PRIMARY_IFACE="$(ip -o route get 1.1.1.1 2>/dev/null | awk '{print $5}' || echo "eth0")"
 
 setup_tap() {
   local TAP_NAME="$1"
   local HOST_IP="$2"
 
   if ! ip link show "${TAP_NAME}" > /dev/null 2>&1; then
-    sudo ip tuntap add dev "${TAP_NAME}" mode tap user "${USER}"
+    sudo ip tuntap add dev "${TAP_NAME}" mode tap user "${USER}" 2>/dev/null || sudo ip tuntap add dev "${TAP_NAME}" mode tap
     sudo ip addr add "${HOST_IP}/24" dev "${TAP_NAME}"
     sudo ip link set dev "${TAP_NAME}" up
     echo "[+] Configured ${TAP_NAME} with host IP ${HOST_IP}/24"
@@ -47,16 +47,64 @@ setup_tap "tap0" "172.16.0.1"
 setup_tap "tap1" "172.16.1.1"
 setup_tap "tap2" "172.16.2.1"
 
-# NAT MASQUERADE for outbound internet traffic
-sudo iptables -t nat -C POSTROUTING -o "${PRIMARY_IFACE}" -j MASQUERADE 2>/dev/null || \
-  sudo iptables -t nat -A POSTROUTING -o "${PRIMARY_IFACE}" -j MASQUERADE
+# -----------------------------------------------------------------------------
+# MicroVM Network Isolation Invariant Enforcement (AGENTS.md / ORIGINAL_REQUEST §R3)
+# Invariant: Guest microVMs run on isolated subnets (172.16.x.0/24) with NO direct
+# public internet access (NO NAT MASQUERADE) and NO cross-tenant forwarding.
+# All egress is strictly outbound-only reverse-tunnel traffic via frostfire-gateway.
+# -----------------------------------------------------------------------------
 
-sudo iptables -C FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || \
-  sudo iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+echo "=== 4. Enforcing Strict MicroVM Network Isolation ==="
 
-for TAP in tap0 tap1 tap2; do
-  sudo iptables -C FORWARD -i "${TAP}" -o "${PRIMARY_IFACE}" -j ACCEPT 2>/dev/null || \
-    sudo iptables -A FORWARD -i "${TAP}" -o "${PRIMARY_IFACE}" -j ACCEPT
+# 1. Purge legacy or accidental NAT MASQUERADE rules
+if [ -n "${PRIMARY_IFACE}" ]; then
+  sudo iptables -t nat -D POSTROUTING -o "${PRIMARY_IFACE}" -j MASQUERADE 2>/dev/null || true
+fi
+sudo iptables -t nat -D POSTROUTING -s 172.16.0.0/16 -j MASQUERADE 2>/dev/null || true
+
+# Explicitly ensure microVM subnets are NEVER translated
+sudo iptables -t nat -C POSTROUTING -s 172.16.0.0/16 -j RETURN 2>/dev/null || \
+  sudo iptables -t nat -A POSTROUTING -s 172.16.0.0/16 -j RETURN
+
+# 2. Block direct WAN forwarding in both directions
+if [ -n "${PRIMARY_IFACE}" ]; then
+  for TAP in tap0 tap1 tap2; do
+    sudo iptables -D FORWARD -i "${TAP}" -o "${PRIMARY_IFACE}" -j ACCEPT 2>/dev/null || true
+    sudo iptables -C FORWARD -i "${TAP}" -o "${PRIMARY_IFACE}" -j DROP 2>/dev/null || \
+      sudo iptables -A FORWARD -i "${TAP}" -o "${PRIMARY_IFACE}" -j DROP
+    sudo iptables -C FORWARD -i "${PRIMARY_IFACE}" -o "${TAP}" -j DROP 2>/dev/null || \
+      sudo iptables -A FORWARD -i "${PRIMARY_IFACE}" -o "${TAP}" -j DROP
+  done
+fi
+
+# 3. Block cross-tenant lateral movement between microVMs
+sudo iptables -C FORWARD -i tap+ -o tap+ -j DROP 2>/dev/null || \
+  sudo iptables -A FORWARD -i tap+ -o tap+ -j DROP
+
+# 4. Drop any forwarded packets originating from the 172.16.0.0/16 range
+sudo iptables -C FORWARD -s 172.16.0.0/16 -j DROP 2>/dev/null || \
+  sudo iptables -A FORWARD -s 172.16.0.0/16 -j DROP
+
+# 5. Prevent guest microVMs from accessing AWS Instance Metadata Service (IMDS)
+sudo iptables -C FORWARD -d 169.254.169.254/32 -j DROP 2>/dev/null || \
+  sudo iptables -A FORWARD -d 169.254.169.254/32 -j DROP
+
+# 6. Host INPUT filtering: guests may ONLY talk to their own 172.16.x.1 gateway
+for i in 0 1 2; do
+  TAP="tap${i}"
+  HOST_IP="172.16.${i}.1"
+
+  # Block IMDS targeting on the host interface
+  sudo iptables -C INPUT -i "${TAP}" -d 169.254.169.254/32 -j DROP 2>/dev/null || \
+    sudo iptables -I INPUT 1 -i "${TAP}" -d 169.254.169.254/32 -j DROP
+
+  # Allow communication directed strictly to the guest's assigned gateway IP
+  sudo iptables -C INPUT -i "${TAP}" -d "${HOST_IP}" -j ACCEPT 2>/dev/null || \
+    sudo iptables -A INPUT -i "${TAP}" -d "${HOST_IP}" -j ACCEPT
+
+  # Drop any other destination (e.g. host's public IP, other TAP IPs)
+  sudo iptables -C INPUT -i "${TAP}" ! -d "${HOST_IP}" -j DROP 2>/dev/null || \
+    sudo iptables -A INPUT -i "${TAP}" ! -d "${HOST_IP}" -j DROP
 done
 
-echo "[✓] Host networking initialized: tap0, tap1, tap2 routed via ${PRIMARY_IFACE} with NAT."
+echo "[✓] Isolated network bridge configured: tap0, tap1, tap2 strictly isolated (172.16.x.0/24, no NAT, WAN egress blocked)."
