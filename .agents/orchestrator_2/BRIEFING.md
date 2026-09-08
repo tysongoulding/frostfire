@@ -69,14 +69,20 @@ Port, implement, and verify the reverse-engineered GrokBot/Sand blueprints into 
 | challenger_m6_1 | teamwork_preview_challenger | M6 Worktree Sync Challenger | completed | d8c6f3ce-040f-4360-b563-a13ea738b447 |
 | challenger_m6_2 | teamwork_preview_challenger | M6 Container Recycling Challenger | completed | 67ecf7ef-d65e-4f28-8af5-8c1a6934734a |
 | auditor_m6_1 | teamwork_preview_auditor | M6 Forensic Auditor | completed | d5ebf994-ffb3-44ba-a706-d77c1a923a98 |
-| explorer_m6_fix_1 | teamwork_preview_explorer | M6 Fix 1 - Worktree & Ref Fix | in-progress | a6c1227c-c542-49a6-bb8a-30a930d65c60 |
-| explorer_m6_fix_2 | teamwork_preview_explorer | M6 Fix 2 - Pruning Fix | in-progress | 0855b965-42f7-464c-a6cc-d8bddbaeb92b |
-| explorer_m6_fix_3 | teamwork_preview_explorer | M6 Fix 3 - Validation & Test Plan | in-progress | 563b480a-4739-4be6-9f2d-d7c20fe2c122 |
+| explorer_m6_fix_1 | teamwork_preview_explorer | M6 Fix 1 - Worktree & Ref Fix | completed | a6c1227c-c542-49a6-bb8a-30a930d65c60 |
+| explorer_m6_fix_2 | teamwork_preview_explorer | M6 Fix 2 - Pruning Fix | completed | 0855b965-42f7-464c-a6cc-d8bddbaeb92b |
+| explorer_m6_fix_3 | teamwork_preview_explorer | M6 Fix 3 - Validation & Test Plan | completed | 563b480a-4739-4be6-9f2d-d7c20fe2c122 |
+| worker_m6_2 | teamwork_preview_worker | M6 Remediation Implementation | completed | e3f35bdf-6f04-48dd-b693-1d15a244bc07 |
+| reviewer_m6_r2_1 | teamwork_preview_reviewer | M6-R2 Reviewer 1 | in-progress | ea5856a5-d081-4bbb-9304-a71819b3dbba |
+| reviewer_m6_r2_2 | teamwork_preview_reviewer | M6-R2 Reviewer 2 | in-progress | 890b8dea-5b3d-4b70-8772-d66e28c93bc3 |
+| challenger_m6_r2_1 | teamwork_preview_challenger | M6-R2 Worktree Sync Challenger | in-progress | 695f4b64-22e6-4bcc-8bc6-22aae8dbad9e |
+| challenger_m6_r2_2 | teamwork_preview_challenger | M6-R2 Container Recycling Challenger | in-progress | 2190c77a-ba48-4ceb-925a-2fcba82448e0 |
+| auditor_m6_r2_1 | teamwork_preview_auditor | M6-R2 Forensic Auditor | in-progress | 831b1b51-053a-40ff-a4d3-99503e8b9c8c |
 
 ## Succession Status
 - Succession required: no (active orchestrator mode, global quota 128)
-- Spawn count: 24 / 128
-- Pending subagents: a6c1227c-c542-49a6-bb8a-30a930d65c60, 0855b965-42f7-464c-a6cc-d8bddbaeb92b, 563b480a-4739-4be6-9f2d-d7c20fe2c122
+- Spawn count: 30 / 128
+- Pending subagents: ea5856a5-d081-4bbb-9304-a71819b3dbba, 890b8dea-5b3d-4b70-8772-d66e28c93bc3, 695f4b64-22e6-4bcc-8bc6-22aae8dbad9e, 2190c77a-ba48-4ceb-925a-2fcba82448e0, 831b1b51-053a-40ff-a4d3-99503e8b9c8c
 - Predecessor: none
 - Successor: none (active orchestrator)
 

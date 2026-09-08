@@ -20,13 +20,21 @@ Analyze and specify drop-in remediation for Defect 3 (Deleted file resurrection)
 - Updated: 2026-09-08T23:15:50Z
 
 ## Investigation State
-- **Explored paths**: DISPATCH.md, ORIGINAL_REQUEST.md, orchestrator_2/PROJECT.md, challenger_m6_1/handoff.md
-- **Key findings**: Defect 3 & Defect 4 stem from `do_restore` using `git read-tree "$working_tree"` + `git checkout-index -a -f` without pruning files that were deleted or renamed relative to the pre-restore state or base tree.
-- **Unexplored areas**: scripts/sync-workspace-state.sh lines 380-420 and entire restore flow, tests/adversarial/test_sync_workspace_adversarial.sh, and exact git plumbing mechanics.
+- **Explored paths**: `scripts/sync-workspace-state.sh` lines 375-400, `tests/adversarial/test_sync_workspace_adversarial.sh` (Tests 1.9 & 1.10), Git plumbing manuals for `read-tree` and `checkout-index`.
+- **Key findings**:
+  - Defect 3 & Defect 4 root cause: `git checkout-index -a -f` copies files from index to working tree but never unlinks absent files.
+  - Hybrid pruning (Candidate C) combines explicit differential pre-pruning (`git diff-tree --diff-filter=D`) with atomic Git-native index/worktree synchronization (`git read-tree -u --reset "$working_tree"`).
+  - Empirically verified on Tests 1.9 & 1.10, full Section 1 dirty extremes suite, and complex filename stress suite (100% pass).
+- **Unexplored areas**: None within scope. All edge cases analyzed and tested.
 
 ## Key Decisions Made
-- Initializing briefing and investigation scope.
+- Selected Candidate C (Hybrid Defense-in-Depth Pruning): `diff-tree --diff-filter=D` against `head_commit` and `staged_tree` with null-delimiters and `rmdir -p`, followed by `git read-tree -u --reset "$working_tree"` (with graceful fallback to `read-tree` + `checkout-index -a -f`).
+- Replaced mutable sections with final verified recommendations.
 
 ## Artifact Index
-- report.md — Comprehensive analysis and remediation recommendations
+- report.md — Comprehensive analysis, empirical evidence, and drop-in code diff
 - handoff.md — 5-component handoff report
+- proposed_sync-workspace-state.sh — Working prototype verified against adversarial test harness
+- test_adversarial_1_9_and_1_10.sh — Automated test reproduction and verification script
+- test_adversarial_sec1.sh — Automated Section 1 dirty extremes verification script
+- test_pruning_stress.sh — Automated special characters and nested directory stress script

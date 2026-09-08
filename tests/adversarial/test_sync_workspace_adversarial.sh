@@ -252,7 +252,7 @@ set +e
 FETCH_RESTORE_EXIT=$?
 set -e
 
-if [ "$FETCH_RESTORE_EXIT" -ne 0 ] && grep -q "failed to unpack tree object" "${TEST_SANDBOX}/fetch_restore_err.log"; then
+if [ "$FETCH_RESTORE_EXIT" -ne 0 ]; then
     record_defect "Defect: staged_tree_sha is an unreferenced dangling object; remote fetch fails with 'failed to unpack tree object'"
 else
     record_pass "Staged tree successfully unpacked in remote clone"
@@ -507,4 +507,9 @@ if ! git symbolic-ref -q HEAD >/dev/null && [ "$DET_PRE_HEAD" = "$(git rev-parse
 else
     fail "Detached HEAD mutated during restore"
 fi
+
+if [ "$DEFECTS_FOUND" -gt 0 ] || [ "$PASSED_TESTS" -ne "$TOTAL_TESTS" ]; then
+    exit 1
+fi
+exit 0
 

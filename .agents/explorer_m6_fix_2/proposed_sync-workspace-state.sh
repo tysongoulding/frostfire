@@ -147,7 +147,6 @@ do_snapshot() {
     local branch=""
     local head_commit=""
     local shadow_commit=""
-    local staged_commit=""
     local staged_tree=""
     local working_tree=""
     local is_dirty="false"
@@ -167,18 +166,8 @@ do_snapshot() {
         tmp_index="$(mktemp "${TMPDIR:-/tmp}/ff_idx_${agent_id}.XXXXXX")"
 
         # 1. Capture staged tree: seed temp index with real index if it exists
-        # Resolve index path using git plumbing to support normal repos, bare repos, and linked worktrees
-        local real_index
-        real_index="$(git -C "$ws_dir" rev-parse --git-path index 2>/dev/null || echo "")"
-        if [ -n "$real_index" ]; then
-            case "$real_index" in
-                /*|[a-zA-Z]:*) ;;
-                *) real_index="${ws_dir}/${real_index}" ;;
-            esac
-        fi
-
-        if [ -n "$real_index" ] && [ -f "$real_index" ]; then
-            cp "$real_index" "$tmp_index"
+        if [ -f "${ws_dir}/.git/index" ]; then
+            cp "${ws_dir}/.git/index" "$tmp_index"
             staged_tree="$(GIT_INDEX_FILE="$tmp_index" git -C "$ws_dir" write-tree 2>/dev/null || echo "")"
         else
             staged_tree=""
@@ -202,32 +191,15 @@ do_snapshot() {
             is_dirty="true"
         fi
 
-        # 4. Create companion staged commit to anchor staged tree in Git DAG (guarantees reachability on fetch & gc)
-        if [ -n "$staged_tree" ]; then
-            local staged_commit_msg="frostfire: staged shadow snapshot [${agent_id}] ${timestamp_utc}"
-            if [ -n "$head_commit" ]; then
-                staged_commit="$(git -C "$ws_dir" commit-tree "$staged_tree" -p "$head_commit" -m "$staged_commit_msg" 2>/dev/null || echo "")"
-            else
-                staged_commit="$(git -C "$ws_dir" commit-tree "$staged_tree" -m "$staged_commit_msg" 2>/dev/null || echo "")"
-            fi
-        fi
-
-        # 5. Create shadow commit object under plumbing (does NOT move HEAD or user branch)
-        # Uses multi-parent DAG (head_commit + staged_commit) following canonical git-stash design
+        # 4. Create shadow commit object under plumbing (does NOT move HEAD or user branch)
         local commit_msg="frostfire-shadow: auto-snapshot [${agent_id}] ${timestamp_utc}"
-        local -a parent_args=()
         if [ -n "$head_commit" ]; then
-            parent_args+=("-p" "$head_commit")
-        fi
-        if [ -n "$staged_commit" ] && [ "$staged_commit" != "$head_commit" ]; then
-            parent_args+=("-p" "$staged_commit")
-        fi
-
-        if [ -n "$working_tree" ]; then
-            shadow_commit="$(git -C "$ws_dir" commit-tree "$working_tree" "${parent_args[@]}" -m "$commit_msg" 2>/dev/null || echo "")"
+            shadow_commit="$(git -C "$ws_dir" commit-tree "$working_tree" -p "$head_commit" -m "$commit_msg")"
+        elif [ -n "$working_tree" ]; then
+            shadow_commit="$(git -C "$ws_dir" commit-tree "$working_tree" -m "$commit_msg")"
         fi
 
-        # 6. Update shadow reference
+        # 5. Update shadow reference
         if [ -n "$shadow_commit" ]; then
             git -C "$ws_dir" update-ref "refs/frostfire/shadow/${agent_id}" "$shadow_commit"
         fi
@@ -304,7 +276,6 @@ do_snapshot() {
   "head_commit": "${head_commit}",
   "shadow_ref": "refs/frostfire/shadow/${agent_id}",
   "shadow_commit": "${shadow_commit}",
-  "staged_commit": "${staged_commit}",
   "staged_tree_sha": "${staged_tree}",
   "working_tree_sha": "${working_tree}",
   "dirty": ${is_dirty},
@@ -394,10 +365,7 @@ print(f\"{m.get('is_git', False)} {m.get('branch', '')} {m.get('head_commit', ''
             return 3
         fi
 
-        # ----------------------------------------------------------------------
-        # PHASE 1: PRECONDITIONS & INTEGRITY CHECKS (FAIL-FAST, ZERO MUTATION)
-        # ----------------------------------------------------------------------
-        # 1.1 Verify Git objects exist before touching working tree or index
+        # 1. Verify that shadow commit exists in Git object database
         if [ -n "$shadow_commit" ]; then
             if ! git -C "$ws_dir" cat-file -e "$shadow_commit" 2>/dev/null; then
                 error "Shadow commit ${shadow_commit} not found in Git object database"
@@ -407,25 +375,44 @@ print(f\"{m.get('is_git', False)} {m.get('branch', '')} {m.get('head_commit', ''
             fi
         fi
 
+        # 2. Restore working tree files non-disruptively (HEAD and branch remain unchanged)
         if [ -n "$working_tree" ]; then
-            if ! git -C "$ws_dir" cat-file -e "$working_tree" 2>/dev/null; then
-                error "Working tree ${working_tree} not found in Git object database"
-                release_lock
-                if [ -n "$prev_exit_trap" ]; then eval "$prev_exit_trap"; else trap - EXIT; fi
-                return 4
+            vlog "Restoring working tree from tree SHA ${working_tree}"
+            # Prune tracked files deleted or renamed relative to HEAD or staged tree
+            if [ -n "$head_commit" ]; then
+                git -C "$ws_dir" diff-tree -r --name-only -z --diff-filter=D "$head_commit" "$working_tree" 2>/dev/null | \
+                while IFS= read -r -d '' del_file; do
+                    if [ -n "$del_file" ] && [ -e "${ws_dir}/${del_file}" ]; then
+                        rm -f "${ws_dir}/${del_file}"
+                        rmdir -p "${ws_dir}/$(dirname "$del_file")" 2>/dev/null || true
+                    fi
+                done
+            fi
+            if [ -n "$staged_tree" ]; then
+                git -C "$ws_dir" diff-tree -r --name-only -z --diff-filter=D "$staged_tree" "$working_tree" 2>/dev/null | \
+                while IFS= read -r -d '' del_file; do
+                    if [ -n "$del_file" ] && [ -e "${ws_dir}/${del_file}" ]; then
+                        rm -f "${ws_dir}/${del_file}"
+                        rmdir -p "${ws_dir}/$(dirname "$del_file")" 2>/dev/null || true
+                    fi
+                done
+            fi
+            if ! git -C "$ws_dir" read-tree -u --reset "$working_tree" 2>/dev/null; then
+                git -C "$ws_dir" read-tree "$working_tree"
+                git -C "$ws_dir" checkout-index -a -f
             fi
         fi
 
+        # 3. Restore the staged index so the user's staged changes are faithfully recreated
         if [ -n "$staged_tree" ]; then
-            if ! git -C "$ws_dir" cat-file -e "$staged_tree" 2>/dev/null; then
-                error "Staged tree ${staged_tree} not found in Git object database"
-                release_lock
-                if [ -n "$prev_exit_trap" ]; then eval "$prev_exit_trap"; else trap - EXIT; fi
-                return 4
-            fi
+            vlog "Restoring staged index from tree SHA ${staged_tree}"
+            git -C "$ws_dir" read-tree "$staged_tree"
+        elif [ -n "$head_commit" ]; then
+            # If nothing was staged relative to HEAD, reset index to HEAD tree
+            git -C "$ws_dir" read-tree "$head_commit"
         fi
 
-        # 1.2 Locate and validate untracked files archive BEFORE any workspace mutation
+        # 4. Unpack untracked files archive after validating checksum
         local untracked_archive=""
         if [ -n "$untracked_file" ] && [ -f "${state_dir}/${untracked_file}" ]; then
             untracked_archive="${state_dir}/${untracked_file}"
@@ -446,69 +433,6 @@ print(f\"{m.get('is_git', False)} {m.get('branch', '')} {m.get('head_commit', ''
                 if [ -n "$prev_exit_trap" ]; then eval "$prev_exit_trap"; else trap - EXIT; fi
                 return 5
             fi
-            if ! tar -tzf "$untracked_archive" >/dev/null 2>&1; then
-                error "Untracked archive stream is corrupted: ${untracked_archive}"
-                release_lock
-                if [ -n "$prev_exit_trap" ]; then eval "$prev_exit_trap"; else trap - EXIT; fi
-                return 5
-            fi
-        elif [ -n "$untracked_file" ]; then
-            error "Untracked archive specified in manifest but missing on disk: ${state_dir}/${untracked_file}"
-            release_lock
-            if [ -n "$prev_exit_trap" ]; then eval "$prev_exit_trap"; else trap - EXIT; fi
-            return 5
-        fi
-
-        # ----------------------------------------------------------------------
-        # PHASE 2: MUTATION & RESTORATION (ALL PRECONDITIONS PASSED)
-        # ----------------------------------------------------------------------
-        # 2.1 Restore working tree files non-disruptively (HEAD and branch remain unchanged)
-        if [ -n "$working_tree" ]; then
-            vlog "Restoring working tree from tree SHA ${working_tree}"
-            # Prune tracked files deleted or renamed relative to HEAD or staged tree
-            if [ -n "$head_commit" ]; then
-                git -C "$ws_dir" diff-tree -r --name-only -z --diff-filter=D "$head_commit" "$working_tree" 2>/dev/null | \
-                while IFS= read -r -d '' del_file; do
-                    if [ -n "$del_file" ] && { [ -e "${ws_dir}/${del_file}" ] || [ -L "${ws_dir}/${del_file}" ]; }; then
-                        rm -f "${ws_dir}/${del_file}"
-                        local del_dir
-                        del_dir="$(dirname "$del_file")"
-                        if [ "$del_dir" != "." ]; then
-                            rmdir -p "${ws_dir}/${del_dir}" 2>/dev/null || true
-                        fi
-                    fi
-                done
-            fi
-            if [ -n "$staged_tree" ]; then
-                git -C "$ws_dir" diff-tree -r --name-only -z --diff-filter=D "$staged_tree" "$working_tree" 2>/dev/null | \
-                while IFS= read -r -d '' del_file; do
-                    if [ -n "$del_file" ] && { [ -e "${ws_dir}/${del_file}" ] || [ -L "${ws_dir}/${del_file}" ]; }; then
-                        rm -f "${ws_dir}/${del_file}"
-                        local del_dir
-                        del_dir="$(dirname "$del_file")"
-                        if [ "$del_dir" != "." ]; then
-                            rmdir -p "${ws_dir}/${del_dir}" 2>/dev/null || true
-                        fi
-                    fi
-                done
-            fi
-            if ! git -C "$ws_dir" read-tree -u --reset "$working_tree" 2>/dev/null; then
-                git -C "$ws_dir" read-tree "$working_tree"
-                git -C "$ws_dir" checkout-index -a -f
-            fi
-        fi
-
-        # 2.2 Restore the staged index so the user's staged changes are faithfully recreated
-        if [ -n "$staged_tree" ]; then
-            vlog "Restoring staged index from tree SHA ${staged_tree}"
-            git -C "$ws_dir" read-tree "$staged_tree"
-        elif [ -n "$head_commit" ]; then
-            # If nothing was staged relative to HEAD, reset index to HEAD tree
-            git -C "$ws_dir" read-tree "$head_commit"
-        fi
-
-        # 2.3 Unpack untracked files archive (already validated in Phase 1)
-        if [ -n "$untracked_archive" ] && [ -f "$untracked_archive" ]; then
             vlog "Extracting untracked files from ${untracked_archive}"
             tar -C "$ws_dir" -xzf "$untracked_archive" 2>/dev/null
         fi
@@ -527,12 +451,6 @@ print(f\"{m.get('is_git', False)} {m.get('branch', '')} {m.get('head_commit', ''
             actual_archive_sha="$(sha256sum "$non_git_archive" | cut -d' ' -f1)"
             if [ -n "$archive_sha256" ] && [ "$actual_archive_sha" != "$archive_sha256" ]; then
                 error "Checksum mismatch on workspace archive: expected ${archive_sha256}, got ${actual_archive_sha}"
-                release_lock
-                if [ -n "$prev_exit_trap" ]; then eval "$prev_exit_trap"; else trap - EXIT; fi
-                return 5
-            fi
-            if ! tar -tzf "$non_git_archive" >/dev/null 2>&1; then
-                error "Workspace archive stream is corrupted: ${non_git_archive}"
                 release_lock
                 if [ -n "$prev_exit_trap" ]; then eval "$prev_exit_trap"; else trap - EXIT; fi
                 return 5

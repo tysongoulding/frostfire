@@ -1,18 +1,18 @@
 # Progress — explorer_m6_fix_2
 
-Last visited: 2026-09-08T23:16:10Z
+Last visited: 2026-09-08T23:20:00Z
 
-## Status
-Investigating `scripts/sync-workspace-state.sh` around lines 380-420 and `tests/adversarial/test_sync_workspace_adversarial.sh`.
-
+## Status: COMPLETE
 - [x] Initialized DISPATCH.md and BRIEFING.md
-- [ ] Inspect `scripts/sync-workspace-state.sh` lines 350-450 (do_restore implementation)
-- [ ] Inspect adversarial tests for Defect 3 and Defect 4 in `tests/adversarial/test_sync_workspace_adversarial.sh`
-- [ ] Analyze exact mechanics of `do_snapshot` and `do_restore`
-- [ ] Formulate and compare remediation options:
-  - Option A: Differential pruning via `git diff-tree` or `git ls-tree` comparison
-  - Option B: `git read-tree -u --reset` with index isolation
-  - Option C: Tracking pre-restore index vs post-restore tree
-- [ ] Formulate recommended drop-in code diff
-- [ ] Write `report.md` and `handoff.md`
-- [ ] Notify parent agent
+- [x] Inspected `scripts/sync-workspace-state.sh` lines 350-450 (do_restore implementation)
+- [x] Inspected adversarial tests for Defect 3 and Defect 4 in `tests/adversarial/test_sync_workspace_adversarial.sh`
+- [x] Analyzed exact mechanics of `do_snapshot` and `do_restore`
+- [x] Formulated and compared remediation options:
+  - Option A: Differential pruning via `git diff-tree --diff-filter=D`
+  - Option B: `git read-tree -u --reset` with isolated index
+  - Option C: Hybrid Defense-in-Depth Pruning (Selected)
+- [x] Empirically validated proposed fix on Tests 1.9 & 1.10, full Section 1, and special characters stress tests (100% pass)
+- [x] Created `proposed_sync-workspace-state.sh` prototype in working directory
+- [x] Written comprehensive `report.md` and 5-component `handoff.md`
+- [x] Updated BRIEFING.md
+- [x] Notified parent agent via `send_message`
