@@ -482,5 +482,11 @@ html.light textarea::placeholder {
   transition: all 0.3s;
 }
 
+/* Theme-Aware Status Dot (Idle / Recent Single Dot: Blue in Frost/Frostfire, Red in Fire, No Glow) */
+.theme-status-dot {
+  background-color: #38BDF8;
+}
 
-
+[data-theme="fire"] .theme-status-dot {
+  background-color: #FF3366;
+}

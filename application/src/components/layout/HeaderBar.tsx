@@ -49,7 +49,9 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onSelectTab,
   isWorking = false,
 }) => {
-  const { devicePreview, setDevicePreview } = useTheme();
+  const { theme, devicePreview, setDevicePreview } = useTheme();
+  const isFireTheme = theme === 'fire';
+  const dotColor = isFireTheme ? 'bg-[#FF3366]' : 'bg-[#38BDF8]';
   const { isPhone, isTablet } = useBreakpoint();
   const isPhoneView = isPhone || devicePreview.startsWith('phone');
   const isTabletView = isTablet || devicePreview.startsWith('tablet');
@@ -155,7 +157,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               </span>
             </div>
           ) : (
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse hidden sm:inline-block" title="Ready / Idle" />
+            <span className={`w-1.5 h-1.5 rounded-full ${dotColor} theme-status-dot hidden sm:inline-block`} title="Ready" />
           )}
 
           {/* Chat / Screen Tab Switcher */}

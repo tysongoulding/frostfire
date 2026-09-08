@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTheme } from '../../context/ThemeContext';
 import { SidebarSection, SidebarItem } from '../../types';
 import {
   Bot,
@@ -62,6 +63,10 @@ export const ThreadList: React.FC<ThreadListProps> = ({
   onDeleteItem,
   isWorking = false,
 }) => {
+  const { theme } = useTheme();
+  const isFireTheme = theme === 'fire';
+  const dotColor = isFireTheme ? 'bg-[#FF3366]' : 'bg-[#38BDF8]';
+
   // Context menu state
   const [contextMenuState, setContextMenuState] = useState<{
     isOpen: boolean;
@@ -461,11 +466,18 @@ export const ThreadList: React.FC<ThreadListProps> = ({
                             </div>
 
                             <div className="flex items-center gap-1 shrink-0">
-                              {isItemWorking && (
-                                <div className="icon-morph-container w-3.5 h-3.5 mr-0.5" title="Actively working">
-                                  <Flame className="icon-flame w-3.5 h-3.5" />
-                                  <Snowflake className="icon-snowflake w-3.5 h-3.5" />
-                                </div>
+                              {isSelected && (
+                                isWorking ? (
+                                  <div className="icon-morph-container w-3.5 h-3.5 mr-0.5" title="Actively working">
+                                    <Flame className="icon-flame w-3.5 h-3.5" />
+                                    <Snowflake className="icon-snowflake w-3.5 h-3.5" />
+                                  </div>
+                                ) : (
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full ${dotColor} theme-status-dot mr-0.5 shrink-0`}
+                                    title="Ready"
+                                  />
+                                )
                               )}
                               {(item.isStarred ?? item.isPinned) && (
                                 <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
