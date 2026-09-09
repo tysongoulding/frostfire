@@ -138,9 +138,9 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           <span className="font-semibold text-theme-text-primary text-xs sm:text-sm tracking-tight truncate max-w-[100px] xs:max-w-[140px] sm:max-w-[280px]">
             {activeAgentName}
           </span>
-          {agentRole && (
+          {agentRole && !agentRole.toLowerCase().includes('display') && (
             <span className="hidden xs:inline-block text-[10px] text-theme-text-muted bg-theme-bg px-1.5 py-0.5 rounded border border-theme-border font-mono">
-              {agentRole.includes('Display') ? agentRole.split('·')[0].trim() : agentRole}
+              {agentRole}
             </span>
           )}
           {/* Top Bar Status Indicator: Idle Green Dot -> Fire/Frost Shift when Actively Working */}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { ResponsiveShell } from './components/layout/ResponsiveShell';
 import { ChatArea } from './components/chat/ChatArea';
@@ -16,11 +16,12 @@ import { DEFAULT_EC2_HOST } from './lib/vnc';
 
 function sessionToEntity(s: AgentSessionInfo): AgentEntity {
   const sid = s.id || s.agent_id || 'agt_default';
+  const hasCustomRole = Boolean(s.role && !s.role.toLowerCase().includes('display'));
   return {
     id: sid,
     name: s.name || `Agent Slot ${s.display_number}`,
-    role: s.role || `Display :${s.display_number} (Port ${s.vnc_port})`,
-    description: s.description || `Cloud Agent on ${s.vm_host}:${s.vnc_port} (Status: ${s.status})`,
+    role: hasCustomRole ? s.role! : '',
+    description: s.description || '',
     notifications: true,
     displayNumber: s.display_number,
     vncPort: s.vnc_port,
@@ -31,11 +32,12 @@ function sessionToEntity(s: AgentSessionInfo): AgentEntity {
 
 function sessionToSidebarItem(s: AgentSessionInfo): SidebarItem {
   const sid = s.id || s.agent_id || 'agt_default';
+  const hasCustomRole = Boolean(s.role && !s.role.toLowerCase().includes('display'));
   return {
     id: sid,
     title: s.name || `Agent Slot ${s.display_number}`,
-    roleTag: s.role || `Display :${s.display_number}`,
-    preview: `${s.vm_host}:${s.vnc_port} · ${s.status}`,
+    roleTag: hasCustomRole ? s.role : undefined,
+    preview: '',
     timestamp: 'Live',
     accentClass: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
     isTeam: false,
@@ -522,7 +524,7 @@ const MainApp: React.FC = () => {
         id: createdId,
         title: name,
         roleTag: role,
-        preview: description || (isNewTeam ? 'Team ready for coordination.' : `Slot :${createdDisplay}`),
+        preview: description || (isNewTeam ? 'Team ready for coordination.' : ''),
         timestamp: 'Just now',
         accentClass: isNewTeam
           ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20'
@@ -656,6 +658,21 @@ const MainApp: React.FC = () => {
     }
   };
 
+  const itemsWithLastMessage = useMemo(() => {
+    const userMessages = messagesByUser[activeUserId] || {};
+    const updated: Record<string, SidebarItem> = {};
+    for (const [id, item] of Object.entries(sidebarItems)) {
+      const threadMsgs = userMessages[id];
+      const lastMsg = threadMsgs && threadMsgs.length > 0 ? threadMsgs[threadMsgs.length - 1] : undefined;
+      updated[id] = {
+        ...item,
+        preview: lastMsg?.text || item.preview || '',
+        timestamp: lastMsg?.timestamp || item.timestamp || 'Live',
+      };
+    }
+    return updated;
+  }, [sidebarItems, messagesByUser, activeUserId]);
+
   return (
     <>
       <ResponsiveShell
@@ -688,7 +705,7 @@ const MainApp: React.FC = () => {
         rightPanelOpen={rightPanelOpen}
         onToggleRightPanel={handleToggleRightPanel}
         sections={sections}
-        items={sidebarItems}
+        items={itemsWithLastMessage}
         onToggleCollapseSection={handleToggleCollapseSection}
         onReorderSections={handleReorderSections}
         onMoveItemToSection={handleMoveItemToSection}

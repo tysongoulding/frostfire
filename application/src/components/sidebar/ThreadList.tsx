@@ -454,15 +454,10 @@ export const ThreadList: React.FC<ThreadListProps> = ({
                         {/* Details */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-1">
-                            <div className="flex items-center gap-1.5 min-w-0">
+                            <div className="flex items-center min-w-0">
                               <span className="font-semibold text-xs text-theme-text-primary truncate">
                                 {item.title}
                               </span>
-                              {item.roleTag && (
-                                <span className="text-[10px] text-theme-text-muted bg-theme-bg px-1.5 py-0.2 rounded border border-theme-border truncate max-w-[100px]">
-                                  {item.roleTag}
-                                </span>
-                              )}
                             </div>
 
                             <div className="flex items-center gap-1 shrink-0">
@@ -491,9 +486,18 @@ export const ThreadList: React.FC<ThreadListProps> = ({
                             </div>
                           </div>
 
-                          <p className="text-[11px] text-theme-text-muted truncate mt-0.5">
-                            {item.preview}
-                          </p>
+                          {(() => {
+                            const hasRole = Boolean(item.roleTag && !item.roleTag.toLowerCase().includes('display'));
+                            let subtitle = hasRole ? item.roleTag : item.preview;
+                            if (subtitle && subtitle.toLowerCase().includes('display')) {
+                              subtitle = '';
+                            }
+                            return subtitle ? (
+                              <p className="text-[11px] text-theme-text-muted truncate mt-0.5">
+                                {subtitle}
+                              </p>
+                            ) : null;
+                          })()}
                         </div>
                       </div>
                     );
