@@ -79,26 +79,36 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       <div className="w-full px-3 sm:px-4 h-11 flex items-center justify-between gap-2 sm:gap-3 text-xs relative overflow-hidden pointer-events-none">
         {/* Left: [Icon] Frostfire (desktop/fluid) + Left Panel Toggle + View Mode + POC User Switcher */}
         <div className="flex items-center gap-2 sm:gap-2.5 z-10 shrink-0 pointer-events-auto">
-          {/* Frostfire Title (desktop & fluid only, hidden on tablet and phone) */}
+          {/* Logo & Title: [ Ff ] Frostfire (desktop & fluid only, hidden on tablet and phone) */}
           {!isConstrainedView && (
-            <span className="relative inline-block group cursor-default">
-              <span
-                className="font-bold text-xs sm:text-sm tracking-tight select-none frostfire-brand-title block"
-                style={{
-                  backgroundImage: 'linear-gradient(100deg, #38bdf8 0%, #818cf8 38%, #c084fc 62%, #ff3366 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                }}
-              >
-                Frostfire
+            <div className="flex items-center gap-2 group cursor-default">
+              {/* Logo: [ Ff ] with Gradient Background (Left Blue, Right Red, White text) */}
+              <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-lg bg-gradient-to-r from-[#38bdf8] to-[#ff3366] flex items-center justify-center shadow-xs shrink-0 select-none">
+                <span className="text-white font-extrabold text-[11px] sm:text-xs tracking-tight leading-none">
+                  Ff
+                </span>
+              </div>
+
+              {/* Frostfire Title */}
+              <span className="relative inline-block">
+                <span
+                  className="font-bold text-xs sm:text-sm tracking-tight select-none frostfire-brand-title block"
+                  style={{
+                    backgroundImage: 'linear-gradient(100deg, #38bdf8 0%, #818cf8 38%, #c084fc 62%, #ff3366 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                  }}
+                >
+                  Frostfire
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-0 font-bold text-xs sm:text-sm tracking-tight select-none text-cycle-white pointer-events-none block"
+                >
+                  Frostfire
+                </span>
               </span>
-              <span
-                aria-hidden="true"
-                className="absolute inset-0 font-bold text-xs sm:text-sm tracking-tight select-none text-cycle-white pointer-events-none block"
-              >
-                Frostfire
-              </span>
-            </span>
+            </div>
           )}
 
           {/* Left Sidebar Toggle Button */}
