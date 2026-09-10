@@ -490,3 +490,12 @@ html.light textarea::placeholder {
 [data-theme="fire"] .theme-status-dot {
   background-color: #FF3366;
 }
+
+/* Frostfire Gradient Brand Title */
+.frostfire-brand-title {
+  background-image: linear-gradient(100deg, #38bdf8 0%, #818cf8 38%, #c084fc 62%, #ff3366 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+

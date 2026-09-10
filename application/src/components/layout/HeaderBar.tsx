@@ -79,16 +79,18 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       <div className="w-full px-3 sm:px-4 h-11 flex items-center justify-between gap-2 sm:gap-3 text-xs relative overflow-hidden pointer-events-none">
         {/* Left: [Icon] Frostfire (desktop/fluid) + Left Panel Toggle + View Mode + POC User Switcher */}
         <div className="flex items-center gap-2 sm:gap-2.5 z-10 shrink-0 pointer-events-auto">
-          {/* Logo & Title: [Icon] Frostfire (desktop & fluid only, hidden on tablet and phone) */}
+          {/* Frostfire Title (desktop & fluid only, hidden on tablet and phone) */}
           {!isConstrainedView && (
-            <div className="flex items-center gap-1.5">
-              <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-lg bg-gradient-to-tr from-theme-accent-primary to-theme-accent-secondary flex items-center justify-center text-black font-bold shadow-xs shrink-0">
-                <Flame className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-black fill-current" />
-              </div>
-              <span className="font-bold text-xs sm:text-sm tracking-tight text-theme-text-primary">
-                Frostfire
-              </span>
-            </div>
+            <span
+              className="font-bold text-xs sm:text-sm tracking-tight select-none frostfire-brand-title"
+              style={{
+                backgroundImage: 'linear-gradient(100deg, #38bdf8 0%, #818cf8 38%, #c084fc 62%, #ff3366 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}
+            >
+              Frostfire
+            </span>
           )}
 
           {/* Left Sidebar Toggle Button */}
