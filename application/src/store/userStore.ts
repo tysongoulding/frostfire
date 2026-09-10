@@ -39,7 +39,7 @@ export const DEFAULT_USERS: UserProfile[] = [
   {
     id: "user-1",
     name: "User1",
-    email: "user1@frostfire.local",
+    email: "user1@frostfire.cloud",
     role: "User 1",
     bio: "Workspace User 1",
     customInstructions: "Prefer concise explanations and clean, modular code. Respect project boundaries.",
@@ -52,7 +52,7 @@ export const DEFAULT_USERS: UserProfile[] = [
   {
     id: "user-2",
     name: "user2",
-    email: "user2@frostfire.local",
+    email: "user2@frostfire.cloud",
     role: "User 2",
     bio: "Workspace User 2",
     customInstructions: "Prefer concise explanations and clean, modular code. Respect project boundaries.",
@@ -65,7 +65,7 @@ export const DEFAULT_USERS: UserProfile[] = [
   {
     id: "user-3",
     name: "user3",
-    email: "user3@frostfire.local",
+    email: "user3@frostfire.cloud",
     role: "User 3",
     bio: "Workspace User 3",
     customInstructions: "Prefer concise explanations and clean, modular code. Respect project boundaries.",
@@ -79,18 +79,22 @@ export const DEFAULT_USERS: UserProfile[] = [
 
 export const DEFAULT_USER_PROFILE: UserProfile = DEFAULT_USERS[0];
 
-const STORAGE_KEY = "frostfire-users-v2";
+const STORAGE_KEY = "frostfire-users-v3";
 
 function loadInitialUsers(): { activeUserId: string; users: UserProfile[] } {
   if (typeof window === "undefined") {
     return { activeUserId: DEFAULT_USERS[0].id, users: DEFAULT_USERS };
   }
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("frostfire-users-v1");
+    const raw =
+      localStorage.getItem(STORAGE_KEY) ||
+      localStorage.getItem("frostfire-users-v2") ||
+      localStorage.getItem("frostfire-users-v1");
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed.users) && parsed.users.length > 0) {
         const targetNames = ["User1", "user2", "user3"];
+        const targetEmails = ["user1@frostfire.cloud", "user2@frostfire.cloud", "user3@frostfire.cloud"];
         const migrated: UserProfile[] = DEFAULT_USERS.map((defUser, idx) => {
           const existing = parsed.users[idx] || {};
           return {
@@ -98,6 +102,7 @@ function loadInitialUsers(): { activeUserId: string; users: UserProfile[] } {
             ...existing,
             id: defUser.id,
             name: targetNames[idx],
+            email: targetEmails[idx],
           };
         });
         const activeId =
@@ -190,6 +195,7 @@ export const useUserStore = create<UserState>((set, get) => ({
       ? data.users
       : DEFAULT_USERS;
     const targetNames = ["User1", "user2", "user3"];
+    const targetEmails = ["user1@frostfire.cloud", "user2@frostfire.cloud", "user3@frostfire.cloud"];
     loadedUsers = DEFAULT_USERS.map((defUser, idx) => {
       const existing = loadedUsers[idx] || {};
       return {
@@ -197,6 +203,7 @@ export const useUserStore = create<UserState>((set, get) => ({
         ...existing,
         id: defUser.id,
         name: targetNames[idx] || defUser.name,
+        email: targetEmails[idx] || defUser.email,
       };
     });
     const activeId =

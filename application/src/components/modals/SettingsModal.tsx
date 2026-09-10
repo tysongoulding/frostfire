@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useUserStore } from '../../store/userStore';
 import { ThemeName, ThemeMode } from '../../types';
@@ -11,9 +11,6 @@ import {
   User,
   Copy,
   Check,
-  Server,
-  Globe,
-  CheckCircle2,
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -21,11 +18,11 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type SettingsTab = 'general' | 'cloud_vm' | 'computer' | 'billing' | 'updates';
+type SettingsTab = 'general' | 'computer' | 'billing' | 'updates';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const { theme, mode, setTheme, setMode } = useTheme();
-  const { users, activeUserId, updateUserVmConfig, getActiveUser } = useUserStore();
+  const { getActiveUser } = useUserStore();
   const activeUser = getActiveUser();
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [copied, setCopied] = useState(false);
@@ -34,39 +31,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [autoUpdates, setAutoUpdates] = useState(false);
   const [computerName, setComputerName] = useState('frostfire-node');
   const [execPermission, setExecPermission] = useState('Always allow');
-
-  const [selectedVmUser, setSelectedVmUser] = useState<string>(activeUserId || 'user1');
-  const [targetVmHost, setTargetVmHost] = useState('');
-  const [targetPort1, setTargetPort1] = useState<number>(6080);
-  const [targetPort2, setTargetPort2] = useState<number>(6081);
-  const [targetPort3, setTargetPort3] = useState<number>(6082);
-  const [targetExecPort, setTargetExecPort] = useState<number>(3000);
-  const [savedSuccess, setSavedSuccess] = useState(false);
-
-  useEffect(() => {
-    const u = users.find((x) => x.id === selectedVmUser) || users[0];
-    if (u) {
-      setTargetVmHost(u.vmHost || '44.242.94.86');
-      setTargetPort1(u.agentPorts?.agent1 ?? 6080);
-      setTargetPort2(u.agentPorts?.agent2 ?? 6081);
-      setTargetPort3(u.agentPorts?.agent3 ?? 6082);
-      setTargetExecPort(u.execPort ?? 3000);
-    }
-  }, [selectedVmUser, users, isOpen]);
-
-  const handleSaveVmConfig = () => {
-    updateUserVmConfig(selectedVmUser, {
-      vmHost: targetVmHost.trim(),
-      agentPorts: {
-        agent1: Number(targetPort1),
-        agent2: Number(targetPort2),
-        agent3: Number(targetPort3),
-      },
-      execPort: Number(targetExecPort),
-    });
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2500);
-  };
 
   if (!isOpen) return null;
 
@@ -97,7 +61,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
             {[
               { id: 'general', label: 'General', icon: <Settings className="w-4 h-4" /> },
-              { id: 'cloud_vm', label: 'Cloud VM & Ports', icon: <Server className="w-4 h-4" /> },
               { id: 'computer', label: 'Computer', icon: <Monitor className="w-4 h-4" /> },
               { id: 'billing', label: 'Usage & Billing', icon: <BarChart3 className="w-4 h-4" /> },
               { id: 'updates', label: 'Updates', icon: <Sparkles className="w-4 h-4" /> },
@@ -132,7 +95,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           {/* Header with Close */}
           <div className="h-12 px-6 border-b border-theme-border flex items-center justify-between">
             <h2 className="text-sm font-bold text-theme-text-primary capitalize">
-              {activeTab === 'billing' ? 'Usage & Billing' : activeTab === 'cloud_vm' ? 'Cloud VM & Ports' : activeTab}
+              {activeTab === 'billing' ? 'Usage & Billing' : activeTab}
             </h2>
             <button
               onClick={onClose}
@@ -286,139 +249,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               </div>
             )}
 
-            {/* 2. CLOUD VM & PORTS TAB */}
-            {activeTab === 'cloud_vm' && (
-              <div className="space-y-6">
-                <div className="space-y-1">
-                  <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">
-                    Per-User AWS VM & Agent Ports
-                  </span>
-                  <span className="text-[11px] text-theme-text-muted block">
-                    Configure the dedicated AWS VM Host/IP and agent display ports for each user account.
-                  </span>
-                </div>
-
-                {/* User selection buttons */}
-                <div className="grid grid-cols-3 gap-2 p-1.5 rounded-xl border border-theme-border bg-theme-bg/50">
-                  {users.map((u) => {
-                    const isSel = u.id === selectedVmUser;
-                    return (
-                      <button
-                        key={u.id}
-                        type="button"
-                        onClick={() => setSelectedVmUser(u.id)}
-                        className={`py-2 px-3 rounded-lg text-left transition-all cursor-pointer ${
-                          isSel
-                            ? 'bg-theme-accent-primary text-black font-semibold shadow-xs'
-                            : 'text-theme-text-muted hover:text-theme-text-primary hover:bg-theme-surface/70'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="truncate block font-bold text-xs">{u.name}</span>
-                          <span className={`text-[9px] font-mono uppercase ${isSel ? 'text-black/80' : 'text-theme-text-muted'}`}>
-                            {u.id}
-                          </span>
-                        </div>
-                        <span className={`text-[10px] block truncate ${isSel ? 'text-black/75' : 'text-theme-text-muted'}`}>
-                          {u.vmHost || '44.242.94.86'}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Configuration form for selected user */}
-                <div className="p-4 rounded-xl border border-theme-border bg-theme-bg/50 space-y-4">
-                  <div className="space-y-1">
-                    <label className="text-theme-text-primary font-medium block text-xs">
-                      AWS VM Public IP / Host
-                    </label>
-                    <div className="relative">
-                      <Globe className="w-3.5 h-3.5 absolute left-3 top-2.5 text-theme-text-muted" />
-                      <input
-                        type="text"
-                        value={targetVmHost}
-                        onChange={(e) => setTargetVmHost(e.target.value)}
-                        placeholder="e.g. 44.242.94.86"
-                        className="w-full pl-9 pr-3 py-1.5 bg-theme-surface border border-theme-border rounded-lg text-theme-text-primary font-mono text-xs outline-none focus:border-theme-accent-primary"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-3 pt-2 border-t border-theme-border">
-                    <div className="space-y-1">
-                      <label className="text-theme-text-primary font-medium block text-xs">
-                        Agent 1 Port (Disp :1)
-                      </label>
-                      <input
-                        type="number"
-                        value={targetPort1}
-                        onChange={(e) => setTargetPort1(Number(e.target.value))}
-                        className="w-full px-3 py-1.5 bg-theme-surface border border-theme-border rounded-lg text-theme-text-primary font-mono text-xs outline-none focus:border-theme-accent-primary"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-theme-text-primary font-medium block text-xs">
-                        Agent 2 Port (Disp :2)
-                      </label>
-                      <input
-                        type="number"
-                        value={targetPort2}
-                        onChange={(e) => setTargetPort2(Number(e.target.value))}
-                        className="w-full px-3 py-1.5 bg-theme-surface border border-theme-border rounded-lg text-theme-text-primary font-mono text-xs outline-none focus:border-theme-accent-primary"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-theme-text-primary font-medium block text-xs">
-                        Agent 3 Port (Disp :3)
-                      </label>
-                      <input
-                        type="number"
-                        value={targetPort3}
-                        onChange={(e) => setTargetPort3(Number(e.target.value))}
-                        className="w-full px-3 py-1.5 bg-theme-surface border border-theme-border rounded-lg text-theme-text-primary font-mono text-xs outline-none focus:border-theme-accent-primary"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1 pt-2 border-t border-theme-border">
-                    <label className="text-theme-text-primary font-medium block text-xs">
-                      Remote Command API Exec Port
-                    </label>
-                    <input
-                      type="number"
-                      value={targetExecPort}
-                      onChange={(e) => setTargetExecPort(Number(e.target.value))}
-                      className="w-36 px-3 py-1.5 bg-theme-surface border border-theme-border rounded-lg text-theme-text-primary font-mono text-xs outline-none focus:border-theme-accent-primary"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between pt-3 border-t border-theme-border">
-                    <div className="flex items-center gap-2">
-                      {savedSuccess ? (
-                        <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
-                          <CheckCircle2 className="w-4 h-4" />
-                          Configuration Saved & Applied!
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-theme-text-muted">
-                          Saves and updates screen routing immediately for this user.
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleSaveVmConfig}
-                      className="px-4 py-1.5 rounded-lg bg-theme-accent-primary text-black font-semibold text-xs hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-xs"
-                    >
-                      Save VM Configuration
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 3. COMPUTER TAB */}
+            {/* 2. COMPUTER TAB */}
             {activeTab === 'computer' && (
               <div className="space-y-6">
                 <div className="space-y-3">
