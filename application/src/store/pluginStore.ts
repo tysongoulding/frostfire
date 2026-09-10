@@ -1,25 +1,21 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { UNIVERSAL_INTEGRATIONS } from "../data/integrations";
 
-export type PluginCategory =
-  | "All"
-  | "Google Workspace"
-  | "Knowledge & Notes"
-  | "Issue Trackers"
-  | "Developer Extensions";
+export type PluginCategory = string;
 
 export interface PluginItem {
   id: string;
   name: string;
-  category: "Google Workspace" | "Knowledge & Notes" | "Issue Trackers" | "Developer Extensions";
-  authType: "oauth" | "token" | "native";
-  oauthProvider?: "google-workspace" | "google" | "atlassian";
+  category: string;
+  authType: "oauth" | "token" | "native" | "api_key";
+  oauthProvider?: "google-workspace" | "google" | "atlassian" | string;
   isAdded: boolean;
   addedAt?: number;
   token?: string;
   description: string;
   capabilities: string[];
-  iconKey:
+  iconKey?:
     | "gmail"
     | "drive"
     | "calendar"
@@ -30,12 +26,16 @@ export interface PluginItem {
     | "atlassian"
     | "sdk"
     | "dev"
-    | "team";
+    | "team"
+    | string;
   color: string;
   badge?: string;
+  detailUrl?: string;
+  competitors?: string[];
+  tags?: string[];
 }
 
-export const INITIAL_PLUGINS: PluginItem[] = [
+const CORE_INITIAL_PLUGINS: PluginItem[] = [
   // Google Workspace Family
   {
     id: "gmail",
@@ -182,6 +182,35 @@ export const INITIAL_PLUGINS: PluginItem[] = [
     color: "text-pink-400",
     badge: "Active",
   },
+];
+
+const mappedUniversal: PluginItem[] = UNIVERSAL_INTEGRATIONS.map((item) => ({
+  id: item.id,
+  name: item.name,
+  category: item.category,
+  authType: item.authType,
+  isAdded: false,
+  description: item.description,
+  capabilities: item.capabilities,
+  iconKey: "dev",
+  color: item.color || "text-blue-400",
+  badge:
+    item.authType === "oauth"
+      ? "OAuth 2.0"
+      : item.authType === "api_key"
+      ? "API Key"
+      : item.authType === "token"
+      ? "Token"
+      : "Native",
+  detailUrl: item.detailUrl,
+  competitors: item.competitors,
+  tags: item.tags,
+}));
+
+const existingIds = new Set(CORE_INITIAL_PLUGINS.map((p) => p.id));
+export const INITIAL_PLUGINS: PluginItem[] = [
+  ...CORE_INITIAL_PLUGINS,
+  ...mappedUniversal.filter((p) => !existingIds.has(p.id)),
 ];
 
 interface PluginState {

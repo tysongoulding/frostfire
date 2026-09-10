@@ -162,18 +162,22 @@ impl TunnelClient {
         let (connected_tx, connected_rx) = watch::channel(false);
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-        let task_handle = tokio::spawn(run_tunnel_worker(
-            config,
-            outbound_rx,
-            inbound_tx,
-            connected_tx,
-            shutdown_rx,
-        ));
+        let task_handle = tokio::runtime::Handle::try_current()
+            .map(|h| {
+                h.spawn(run_tunnel_worker(
+                    config,
+                    outbound_rx,
+                    inbound_tx,
+                    connected_tx,
+                    shutdown_rx,
+                ))
+            })
+            .ok();
 
         let handle = TunnelHandle {
             connected_rx,
             shutdown_tx: Some(shutdown_tx),
-            task_handle: Some(task_handle),
+            task_handle,
         };
 
         Ok(Self {

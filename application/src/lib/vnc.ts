@@ -1,4 +1,5 @@
 export const DEFAULT_EC2_HOST = '44.242.94.86';
+export const DEFAULT_LAMBDA_HOST = '4hkbgj6zkmfm674e3nxlpagshq0moaoy.lambda-url.us-west-2.on.aws';
 
 export interface VncOptions {
   scale?: 'fixed' | 'fit';
@@ -17,7 +18,7 @@ export function getVncUrl(
   displayNumber: number,
   optionsOrHost?: VncOptions | string
 ): string {
-  let host = DEFAULT_EC2_HOST;
+  let host = DEFAULT_LAMBDA_HOST;
   let scale: 'fixed' | 'fit' = 'fixed';
   let customPort: number | undefined;
   let customToken: string | undefined;
@@ -34,6 +35,20 @@ export function getVncUrl(
     else if (optionsOrHost.ssl) protocol = 'https';
   }
 
+  // Redirect legacy offline EC2 host to new Lambda microVM
+  if (!host || host === DEFAULT_EC2_HOST || host === '44.242.94.86') {
+    host = DEFAULT_LAMBDA_HOST;
+  }
+
+  // Handle Lambda microVM Function URLs or HTTPS hostnames
+  if (host.includes('lambda-url') || host.startsWith('http://') || host.startsWith('https://')) {
+    const cleanHost = host.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    const query = new URLSearchParams();
+    query.set('display', String(displayNumber));
+    if (customToken) query.set('token', customToken);
+    return `https://${cleanHost}/display?${query.toString()}`;
+  }
+
   const port = customPort ?? getVncPort(displayNumber);
   const tokenQuery = customToken ? `token=${encodeURIComponent(customToken)}&` : '';
 
@@ -42,11 +57,16 @@ export function getVncUrl(
 
 export function getVncWebSocketUrl(
   displayNumber: number,
-  host: string = DEFAULT_EC2_HOST,
+  host: string = DEFAULT_LAMBDA_HOST,
   customPort?: number,
   token?: string,
   secure: boolean = false
 ): string {
+  if (host.includes('lambda-url')) {
+    const cleanHost = host.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+    return `wss://${cleanHost}/websockify${tokenQuery}`;
+  }
   const port = customPort ?? getVncPort(displayNumber);
   const proto = secure ? 'wss' : 'ws';
   const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
@@ -57,9 +77,16 @@ export async function resolveVncSession(
   user: string,
   display: number,
   token?: string,
-  host: string = DEFAULT_EC2_HOST,
+  host: string = DEFAULT_LAMBDA_HOST,
   execPort: number = 3000
 ): Promise<{ vncPort: number; execPort: number; status: string }> {
+  if (!host || host === DEFAULT_EC2_HOST || host === '44.242.94.86' || host.includes('lambda-url')) {
+    return {
+      vncPort: 443,
+      execPort: 443,
+      status: 'running',
+    };
+  }
   try {
     const query = new URLSearchParams({ user, display: String(display) });
     if (token) query.set('token', token);

@@ -35,40 +35,80 @@ interface UserState {
   initUsers: (data: { activeUserId?: string; users?: UserProfile[] }) => void;
 }
 
-export const DEFAULT_USER_PROFILE: UserProfile = {
-  id: "user-default",
-  name: "Default Operator",
-  email: "operator@frostfire.local",
-  role: "System Operator",
-  bio: "Autonomous Agent Orchestrator",
-  customInstructions: "Prefer concise explanations and clean, modular code. Respect project boundaries.",
-  vmHost: "44.242.94.86",
-  agentPorts: { agent1: 6080, agent2: 6081, agent3: 6082 },
-  execPort: 3000,
-  isDefault: true,
-  createdAt: new Date().toISOString(),
-};
+export const DEFAULT_USERS: UserProfile[] = [
+  {
+    id: "user-1",
+    name: "User1",
+    email: "user1@frostfire.local",
+    role: "User 1",
+    bio: "Workspace User 1",
+    customInstructions: "Prefer concise explanations and clean, modular code. Respect project boundaries.",
+    vmHost: "44.242.94.86",
+    agentPorts: { agent1: 6080, agent2: 6081, agent3: 6082 },
+    execPort: 3000,
+    isDefault: true,
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "user-2",
+    name: "user2",
+    email: "user2@frostfire.local",
+    role: "User 2",
+    bio: "Workspace User 2",
+    customInstructions: "Prefer concise explanations and clean, modular code. Respect project boundaries.",
+    vmHost: "44.242.94.86",
+    agentPorts: { agent1: 6083, agent2: 6084, agent3: 6085 },
+    execPort: 3000,
+    isDefault: false,
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: "user-3",
+    name: "user3",
+    email: "user3@frostfire.local",
+    role: "User 3",
+    bio: "Workspace User 3",
+    customInstructions: "Prefer concise explanations and clean, modular code. Respect project boundaries.",
+    vmHost: "44.242.94.86",
+    agentPorts: { agent1: 6086, agent2: 6087, agent3: 6088 },
+    execPort: 3000,
+    isDefault: false,
+    createdAt: new Date().toISOString(),
+  },
+];
 
-const STORAGE_KEY = "frostfire-users-v1";
+export const DEFAULT_USER_PROFILE: UserProfile = DEFAULT_USERS[0];
+
+const STORAGE_KEY = "frostfire-users-v2";
 
 function loadInitialUsers(): { activeUserId: string; users: UserProfile[] } {
   if (typeof window === "undefined") {
-    return { activeUserId: DEFAULT_USER_PROFILE.id, users: [DEFAULT_USER_PROFILE] };
+    return { activeUserId: DEFAULT_USERS[0].id, users: DEFAULT_USERS };
   }
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("frostfire-users-v1");
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed.users) && parsed.users.length > 0) {
+        const targetNames = ["User1", "user2", "user3"];
+        const migrated: UserProfile[] = DEFAULT_USERS.map((defUser, idx) => {
+          const existing = parsed.users[idx] || {};
+          return {
+            ...defUser,
+            ...existing,
+            id: defUser.id,
+            name: targetNames[idx],
+          };
+        });
         const activeId =
-          parsed.activeUserId && parsed.users.some((u: UserProfile) => u.id === parsed.activeUserId)
+          parsed.activeUserId && migrated.some((u) => u.id === parsed.activeUserId)
             ? parsed.activeUserId
-            : parsed.users[0].id;
-        return { activeUserId: activeId, users: parsed.users };
+            : migrated[0].id;
+        return { activeUserId: activeId, users: migrated };
       }
     }
   } catch {}
-  return { activeUserId: DEFAULT_USER_PROFILE.id, users: [DEFAULT_USER_PROFILE] };
+  return { activeUserId: DEFAULT_USERS[0].id, users: DEFAULT_USERS };
 }
 
 const initial = loadInitialUsers();
@@ -146,9 +186,19 @@ export const useUserStore = create<UserState>((set, get) => ({
   },
 
   initUsers: (data) => {
-    const loadedUsers = data.users && Array.isArray(data.users) && data.users.length > 0
+    let loadedUsers = data.users && Array.isArray(data.users) && data.users.length > 0
       ? data.users
-      : [DEFAULT_USER_PROFILE];
+      : DEFAULT_USERS;
+    const targetNames = ["User1", "user2", "user3"];
+    loadedUsers = DEFAULT_USERS.map((defUser, idx) => {
+      const existing = loadedUsers[idx] || {};
+      return {
+        ...defUser,
+        ...existing,
+        id: defUser.id,
+        name: targetNames[idx] || defUser.name,
+      };
+    });
     const activeId =
       data.activeUserId && loadedUsers.some((u) => u.id === data.activeUserId)
         ? data.activeUserId

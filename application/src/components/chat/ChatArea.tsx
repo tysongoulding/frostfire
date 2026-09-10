@@ -34,7 +34,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   onBack,
   showBackButton = false,
   leftSidebarOpen = true,
-  rightPanelOpen = true,
+  rightPanelOpen = false,
   messages: externalMessages,
   isThinking = false,
   onSendMessage,

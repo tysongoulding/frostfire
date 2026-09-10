@@ -62,7 +62,7 @@ const MainApp: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isMarketplaceOpen, setIsMarketplaceOpen] = useState<boolean>(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState<boolean>(true);
-  const [rightPanelOpen, setRightPanelOpen] = useState<boolean>(true);
+  const [rightPanelOpen, setRightPanelOpen] = useState<boolean>(false);
   const [sections, setSections] = useState<SidebarSection[]>(INITIAL_SECTIONS);
   const [sidebarItems, setSidebarItems] = useState<Record<string, SidebarItem>>({});
   const [messagesByUser, setMessagesByUser] = useState<Record<string, Record<string, ChatMessage[]>>>({});

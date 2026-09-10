@@ -25,6 +25,7 @@ import {
   Key,
   ShieldCheck,
   RefreshCw,
+  ExternalLink,
 } from "lucide-react";
 
 function getPluginIcon(iconKey: PluginItem["iconKey"], color: string) {
@@ -78,27 +79,44 @@ export function PluginsCustomiseTab() {
   const [tokenInput, setTokenInput] = useState("");
   const [isHoveredId, setIsHoveredId] = useState<string | null>(null);
 
-  const categories: PluginCategory[] = [
-    "All",
-    "Google Workspace",
-    "Knowledge & Notes",
-    "Issue Trackers",
-    "Developer Extensions",
-  ];
+  const [renderLimit, setRenderLimit] = useState(50);
+
+  const categories: string[] = useMemo(() => {
+    const set = new Set<string>();
+    plugins.forEach((p) => {
+      if (p.category) set.add(p.category);
+    });
+    return ["All", "Added", ...Array.from(set).sort()];
+  }, [plugins]);
 
   const filteredPlugins = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
     return plugins.filter((plugin) => {
       const matchCategory =
-        selectedCategory === "All" || plugin.category === selectedCategory;
-      const query = searchQuery.trim().toLowerCase();
-      const matchSearch =
-        !query ||
+        selectedCategory === "All"
+          ? true
+          : selectedCategory === "Added"
+          ? plugin.isAdded
+          : plugin.category === selectedCategory;
+
+      if (!matchCategory) return false;
+      if (!query) return true;
+
+      return (
         plugin.name.toLowerCase().includes(query) ||
+        plugin.category.toLowerCase().includes(query) ||
         plugin.description.toLowerCase().includes(query) ||
-        plugin.capabilities.some((c) => c.toLowerCase().includes(query));
-      return matchCategory && matchSearch;
+        plugin.capabilities.some((c) => c.toLowerCase().includes(query)) ||
+        (plugin.tags && plugin.tags.some((t) => t.toLowerCase().includes(query))) ||
+        (plugin.competitors && plugin.competitors.some((c) => c.toLowerCase().includes(query)))
+      );
     });
   }, [plugins, selectedCategory, searchQuery]);
+
+  const visiblePlugins = useMemo(
+    () => filteredPlugins.slice(0, renderLimit),
+    [filteredPlugins, renderLimit]
+  );
 
   const addedCount = useMemo(
     () => plugins.filter((p) => p.isAdded).length,
@@ -203,6 +221,8 @@ export function PluginsCustomiseTab() {
           const count =
             cat === "All"
               ? plugins.length
+              : cat === "Added"
+              ? plugins.filter((p) => p.isAdded).length
               : plugins.filter((p) => p.category === cat).length;
 
           return (
@@ -238,114 +258,163 @@ export function PluginsCustomiseTab() {
             <p>No plugins matching &quot;{searchQuery}&quot;</p>
           </div>
         ) : (
-          filteredPlugins.map((plugin) => {
-            const isConnectingThis = isConnecting[plugin.id];
-            const isHovered = isHoveredId === plugin.id;
+          <>
+            {visiblePlugins.map((plugin) => {
+              const isConnectingThis = isConnecting[plugin.id];
+              const isHovered = isHoveredId === plugin.id;
 
-            return (
-              <div
-                key={plugin.id}
-                className={`flex items-center justify-between px-3.5 py-2 rounded-xl border transition ${
-                  plugin.isAdded
-                    ? "bg-[#161b22]/90 border-[#30363d] hover:border-emerald-500/40"
-                    : "bg-[#161b22]/50 border-[#30363d]/60 hover:border-[#30363d] hover:bg-[#161b22]"
-                }`}
-              >
-                {/* Left: Icon, Name & Category */}
-                <div className="flex items-center space-x-3 min-w-[240px] max-w-[280px] flex-shrink-0">
-                  <div className="p-2 rounded-lg bg-[#0d1117] border border-[#30363d] flex-shrink-0">
-                    {getPluginIcon(plugin.iconKey, plugin.color)}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center space-x-1.5">
-                      <span className="font-semibold text-white truncate text-xs">
-                        {plugin.name}
-                      </span>
-                      {plugin.badge && (
-                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-[#0d1117] border border-[#30363d] text-[#8b949e]">
-                          {plugin.badge}
+              return (
+                <div
+                  key={plugin.id}
+                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl border transition ${
+                    plugin.isAdded
+                      ? "bg-[#161b22]/90 border-[#30363d] hover:border-emerald-500/40"
+                      : "bg-[#161b22]/50 border-[#30363d]/60 hover:border-[#30363d] hover:bg-[#161b22]"
+                  }`}
+                >
+                  {/* Left: Icon, Name & Category */}
+                  <div className="flex items-center space-x-3 min-w-[220px] max-w-[260px] flex-shrink-0">
+                    <div className="p-2 rounded-lg bg-[#0d1117] border border-[#30363d] flex-shrink-0">
+                      {getPluginIcon(plugin.iconKey as any, plugin.color)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center space-x-1.5">
+                        <span className="font-semibold text-white truncate text-xs">
+                          {plugin.name}
                         </span>
+                        {plugin.badge && (
+                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-[#0d1117] border border-[#30363d] text-[#8b949e]">
+                            {plugin.badge}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-[#6e7681] truncate block">
+                        {plugin.category}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Middle: Description, Competitor Chips & Capability Chips */}
+                  <div className="flex-1 min-w-0 px-4 hidden md:flex flex-col justify-center gap-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[11px] text-[#8b949e] truncate max-w-sm">
+                        {plugin.description}
+                      </p>
+                      {plugin.detailUrl && (
+                        <a
+                          href={plugin.detailUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-[10px] text-[#58a6ff] hover:underline flex items-center space-x-1 flex-shrink-0"
+                          title="Open official documentation"
+                        >
+                          <span>Docs</span>
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
                       )}
                     </div>
-                    <span className="text-[10px] text-[#6e7681] truncate block">
-                      {plugin.category}
-                    </span>
-                  </div>
-                </div>
 
-                {/* Middle: Description & Capability Chips */}
-                <div className="flex-1 min-w-0 px-4 hidden md:flex items-center justify-between gap-2">
-                  <p className="text-[11px] text-[#8b949e] truncate max-w-sm">
-                    {plugin.description}
-                  </p>
-                  <div className="flex items-center space-x-1 flex-shrink-0 overflow-hidden">
-                    {plugin.capabilities.slice(0, 3).map((cap, i) => (
-                      <span
-                        key={i}
-                        className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#0d1117] border border-[#30363d]/60 text-[#8b949e] whitespace-nowrap"
-                      >
-                        {cap}
-                      </span>
-                    ))}
-                    {plugin.capabilities.length > 3 && (
-                      <span className="text-[9px] font-mono text-[#6e7681]">
-                        +{plugin.capabilities.length - 3}
-                      </span>
-                    )}
-                  </div>
-                </div>
+                    <div className="flex items-center justify-between gap-2">
+                      {plugin.competitors && plugin.competitors.length > 0 ? (
+                        <div className="flex items-center space-x-1 overflow-hidden">
+                          <span className="text-[9px] text-[#6e7681] font-medium flex-shrink-0">Alts:</span>
+                          {plugin.competitors.slice(0, 3).map((comp, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setSearchQuery(comp)}
+                              className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 hover:bg-purple-500/20 transition cursor-pointer whitespace-nowrap"
+                              title={`Filter by competitor: ${comp}`}
+                            >
+                              {comp}
+                            </button>
+                          ))}
+                          {plugin.competitors.length > 3 && (
+                            <span className="text-[9px] text-[#6e7681]">+{plugin.competitors.length - 3}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <div />
+                      )}
 
-                {/* Right: Dense Action Button (+ Add / ✓ Added) */}
-                <div className="flex items-center space-x-2 flex-shrink-0 pl-2">
-                  <button
-                    type="button"
-                    onClick={() => handleActionClick(plugin)}
-                    disabled={isConnectingThis}
-                    onMouseEnter={() => setIsHoveredId(plugin.id)}
-                    onMouseLeave={() => setIsHoveredId(null)}
-                    className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer select-none ${
-                      isConnectingThis
-                        ? "bg-[#21262d] text-[#8b949e] border border-[#30363d] cursor-wait"
-                        : plugin.isAdded
-                        ? isHovered
-                          ? "bg-red-500/15 text-red-400 border border-red-500/40"
-                          : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                        : "bg-[#21262d] hover:bg-[#58a6ff]/20 text-[#c9d1d9] hover:text-[#58a6ff] border border-[#30363d] hover:border-[#58a6ff]/40"
-                    }`}
-                    title={
-                      plugin.isAdded
-                        ? "Click to disconnect"
-                        : `Connect ${plugin.name}`
-                    }
-                  >
-                    {isConnectingThis ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-[#58a6ff]" />
-                        <span>Connecting...</span>
-                      </>
-                    ) : plugin.isAdded ? (
-                      isHovered ? (
+                      <div className="flex items-center space-x-1 flex-shrink-0 overflow-hidden">
+                        {plugin.capabilities.slice(0, 2).map((cap, i) => (
+                          <span
+                            key={i}
+                            className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#0d1117] border border-[#30363d]/60 text-[#8b949e] whitespace-nowrap"
+                          >
+                            {cap}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right: Dense Action Button (+ Add / ✓ Added) */}
+                  <div className="flex items-center space-x-2 flex-shrink-0 pl-2">
+                    <button
+                      type="button"
+                      onClick={() => handleActionClick(plugin)}
+                      disabled={isConnectingThis}
+                      onMouseEnter={() => setIsHoveredId(plugin.id)}
+                      onMouseLeave={() => setIsHoveredId(null)}
+                      className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer select-none ${
+                        isConnectingThis
+                          ? "bg-[#21262d] text-[#8b949e] border border-[#30363d] cursor-wait"
+                          : plugin.isAdded
+                          ? isHovered
+                            ? "bg-red-500/15 text-red-400 border border-red-500/40"
+                            : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                          : "bg-[#21262d] hover:bg-[#58a6ff]/20 text-[#c9d1d9] hover:text-[#58a6ff] border border-[#30363d] hover:border-[#58a6ff]/40"
+                      }`}
+                      title={
+                        plugin.isAdded
+                          ? "Click to disconnect"
+                          : `Connect ${plugin.name}`
+                      }
+                    >
+                      {isConnectingThis ? (
                         <>
-                          <X className="w-3.5 h-3.5 text-red-400" />
-                          <span>Disconnect</span>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-[#58a6ff]" />
+                          <span>Connecting...</span>
                         </>
+                      ) : plugin.isAdded ? (
+                        isHovered ? (
+                          <>
+                            <X className="w-3.5 h-3.5 text-red-400" />
+                            <span>Disconnect</span>
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span className="font-semibold">Added</span>
+                          </>
+                        )
                       ) : (
                         <>
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span className="font-semibold">Added</span>
+                          <Plus className="w-3.5 h-3.5 text-[#8b949e] group-hover:text-white" />
+                          <span>Add</span>
                         </>
-                      )
-                    ) : (
-                      <>
-                        <Plus className="w-3.5 h-3.5 text-[#8b949e] group-hover:text-white" />
-                        <span>Add</span>
-                      </>
-                    )}
-                  </button>
+                      )}
+                    </button>
+                  </div>
                 </div>
+              );
+            })}
+
+            {filteredPlugins.length > renderLimit && (
+              <div className="pt-2 pb-4 text-center">
+                <button
+                  type="button"
+                  onClick={() => setRenderLimit((prev) => prev + 50)}
+                  className="px-4 py-1.5 rounded-lg bg-[#21262d] hover:bg-[#30363d] text-xs text-[#c9d1d9] font-medium border border-[#30363d] transition cursor-pointer"
+                >
+                  Load More Integrations ({filteredPlugins.length - renderLimit} remaining)
+                </button>
               </div>
-            );
-          })
+            )}
+          </>
         )}
       </div>
 

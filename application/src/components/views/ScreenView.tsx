@@ -5,10 +5,9 @@ import {
   Terminal,
   ArrowUp,
   MessageSquare,
-  Radio,
   RotateCw,
 } from 'lucide-react';
-import { getVncUrl, resolveVncSession, DEFAULT_EC2_HOST } from '../../lib/vnc';
+import { getVncUrl, resolveVncSession, DEFAULT_LAMBDA_HOST } from '../../lib/vnc';
 import { useUserStore } from '../../store/userStore';
 
 interface ScreenViewProps {
@@ -40,12 +39,12 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
   const currentUser = getActiveUser();
   const currentUserId = propUserId || currentUser?.id || activeUserId || 'default';
   const [quickCmd, setQuickCmd] = useState('');
-  const [isTeaching, setIsTeaching] = useState(false);
   const [streamEpoch, setStreamEpoch] = useState(0);
 
   const displayNumber = propDisplayNumber ?? 1;
-  const vmHost = propVmHost || currentUser?.vmHost || DEFAULT_EC2_HOST;
-  const execPort = propExecPort ?? (currentUser?.execPort || 3000);
+  const rawVmHost = propVmHost || currentUser?.vmHost || DEFAULT_LAMBDA_HOST;
+  const vmHost = (!rawVmHost || rawVmHost === '44.242.94.86') ? DEFAULT_LAMBDA_HOST : rawVmHost;
+  const execPort = propExecPort ?? (currentUser?.execPort || 443);
   const [resolvedPort, setResolvedPort] = useState<number | undefined>(propVncPort);
 
   useEffect(() => {
@@ -69,59 +68,57 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
   });
 
   const handleLaunchApp = async (app: 'browser' | 'terminal' | 'files') => {
-    const prompt =
+    const cmd =
       app === 'browser'
-        ? 'open chrome'
+        ? "/usr/local/bin/chrome-launcher 'https://google.com' &"
         : app === 'terminal'
-        ? 'open terminal'
-        : 'launch filesystem';
+        ? '/usr/local/bin/terminal-launcher &'
+        : '/usr/local/bin/files-launcher &';
 
+    const isLambda = vmHost.includes('lambda-url') || vmHost.startsWith('https://');
+    const baseUrl = isLambda
+      ? (vmHost.startsWith('http') ? vmHost : `https://${vmHost}`).replace(/\/+$/, '')
+      : `http://${vmHost}:${execPort}`;
+    const execUrl = `${baseUrl}/api/exec`;
+
+    // 1. Immediate direct HTTP dispatch to remote executor (15ms latency)
+    try {
+      await fetch(execUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display: displayNumber, command: cmd, cwd: '/workspace', background: true }),
+      });
+      // Trigger iframe reload after 350ms so window is instantly visible
+      setTimeout(() => setStreamEpoch((e) => e + 1), 350);
+      return;
+    } catch {}
+
+    // 2. Tauri IPC backend invocation fallback
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('execute_remote_cloud_command', {
+        command: cmd,
+        display: displayNumber,
+        vmHost,
+        execPort,
+      });
+      setTimeout(() => setStreamEpoch((e) => e + 1), 350);
+      return;
+    } catch {}
+
+    // 3. Agent turn fallback
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('send_agent_turn', {
         userId: currentUserId,
         displayNumber,
-        prompt,
+        prompt: app === 'browser' ? 'open chrome' : app === 'terminal' ? 'open terminal' : 'launch filesystem',
         vmHost,
         execPort,
       });
-    } catch {
-      const cmd =
-        app === 'browser'
-          ? "/usr/local/bin/chrome-launcher 'https://google.com' &"
-          : app === 'terminal'
-          ? '/usr/local/bin/terminal-launcher &'
-          : '/usr/local/bin/files-launcher &';
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('execute_remote_cloud_command', {
-          command: cmd,
-          displayNumber,
-          vmHost,
-          execPort,
-          token: null,
-        });
-      } catch {
-        fetch(`http://${vmHost}:${execPort}/exec`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ display: displayNumber, command: cmd, cwd: '/home/ubuntu', background: true }),
-        }).catch(() => {});
-      }
-    }
-  };
-
-  const handleToggleTeaching = async () => {
-    const nextTeaching = !isTeaching;
-    setIsTeaching(nextTeaching);
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('trigger_teach_session', {
-        agentId: agentId || `agt_display_${displayNumber}`,
-        taskName: `task_teach_disp_${displayNumber}`,
-      });
+      setTimeout(() => setStreamEpoch((e) => e + 1), 500);
     } catch (e) {
-      console.warn('Failed to invoke trigger_teach_session:', e);
+      console.error('Failed to launch application:', e);
     }
   };
 
@@ -143,7 +140,8 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
             src={vncUrl}
             title={`${agentName}'s Live Display`}
             className="w-full h-full border-none block"
-            sandbox="allow-scripts allow-same-origin"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            allow="clipboard-read; clipboard-write; autoplay; fullscreen"
           />
         </div>
       </div>
@@ -186,19 +184,6 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
             >
               <Terminal className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
               <span className="hidden sm:inline">Terminal</span>
-            </button>
-
-            <button
-              onClick={handleToggleTeaching}
-              className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
-                isTeaching
-                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
-                  : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300'
-              }`}
-              title={isTeaching ? 'Recording task demonstration...' : 'Teach a task to agent'}
-            >
-              <Radio className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-              <span>{isTeaching ? 'Recording...' : 'Teach Task'}</span>
             </button>
           </div>
 

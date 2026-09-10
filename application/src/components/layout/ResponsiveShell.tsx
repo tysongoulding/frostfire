@@ -85,7 +85,7 @@ export const ResponsiveShell: React.FC<ResponsiveShellProps> = ({
   isWorking = false,
   leftSidebarOpen = true,
   onToggleLeftSidebar,
-  rightPanelOpen = true,
+  rightPanelOpen = false,
   onToggleRightPanel,
   sections,
   items,

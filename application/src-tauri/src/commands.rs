@@ -2631,23 +2631,38 @@ pub async fn execute_remote_cloud_command(
     command: String,
     cwd: Option<String>,
     background: Option<bool>,
+    vm_host: Option<String>,
+    exec_port: Option<u16>,
 ) -> Result<RemoteExecResult, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
-    let host_ip = std::env::var("EC2_AGENT_HOST")
-        .ok()
+    let host_raw = vm_host
         .filter(|h| !h.trim().is_empty())
-        .unwrap_or_else(|| "44.242.94.86".to_string());
+        .or_else(|| std::env::var("EC2_AGENT_HOST").ok())
+        .unwrap_or_else(|| "4hkbgj6zkmfm674e3nxlpagshq0moaoy.lambda-url.us-west-2.on.aws".to_string());
 
-    let port: u16 = std::env::var("EC2_EXEC_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(3000);
-
-    let url = format!("http://{}:{}/exec", host_ip, port);
+    let is_lambda = host_raw.contains("lambda-url") || host_raw.starts_with("https://");
+    let url = if is_lambda {
+        let clean_host = host_raw
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .trim_end_matches('/');
+        format!("https://{}/api/exec", clean_host)
+    } else {
+        let port: u16 = exec_port.unwrap_or_else(|| {
+            std::env::var("EC2_EXEC_PORT")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(3000)
+        });
+        let clean_host = host_raw
+            .trim_start_matches("http://")
+            .trim_end_matches('/');
+        format!("http://{}:{}/exec", clean_host, port)
+    };
     let clean_cmd = sanitize_bash_command(&command);
     let is_bg = background.unwrap_or_else(|| clean_cmd.ends_with('&'));
     let work_dir = cwd.unwrap_or_else(|| "/home/ubuntu".to_string());
@@ -2927,14 +2942,27 @@ async fn execute_on_remote_pc(
         .build()
         .map_err(|e| e.to_string())?;
 
-    let host_ip = vm_host
+    let host_raw = vm_host
         .filter(|h| !h.trim().is_empty())
         .map(|h| h.trim().to_string())
         .unwrap_or_else(|| {
-            std::env::var("EC2_AGENT_HOST").unwrap_or_else(|_| "44.242.94.86".to_string())
+            std::env::var("EC2_AGENT_HOST").unwrap_or_else(|_| "4hkbgj6zkmfm674e3nxlpagshq0moaoy.lambda-url.us-west-2.on.aws".to_string())
         });
-    let port = exec_port.unwrap_or(3000);
-    let url = format!("http://{}:{}/exec", host_ip, port);
+
+    let is_lambda = host_raw.contains("lambda-url") || host_raw.starts_with("https://");
+    let url = if is_lambda {
+        let clean_host = host_raw
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .trim_end_matches('/');
+        format!("https://{}/api/exec", clean_host)
+    } else {
+        let port = exec_port.unwrap_or(3000);
+        let clean_host = host_raw
+            .trim_start_matches("http://")
+            .trim_end_matches('/');
+        format!("http://{}:{}/exec", clean_host, port)
+    };
 
     let clean_cmd = sanitize_bash_command(cmd);
     let is_bg = clean_cmd.ends_with('&');
