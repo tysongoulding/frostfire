@@ -81,15 +81,23 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         <div className="flex items-center gap-2 sm:gap-2.5 z-10 shrink-0 pointer-events-auto">
           {/* Frostfire Title (desktop & fluid only, hidden on tablet and phone) */}
           {!isConstrainedView && (
-            <span
-              className="font-bold text-xs sm:text-sm tracking-tight select-none frostfire-brand-title"
-              style={{
-                backgroundImage: 'linear-gradient(100deg, #38bdf8 0%, #818cf8 38%, #c084fc 62%, #ff3366 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-              }}
-            >
-              Frostfire
+            <span className="relative inline-block group cursor-default">
+              <span
+                className="font-bold text-xs sm:text-sm tracking-tight select-none frostfire-brand-title block"
+                style={{
+                  backgroundImage: 'linear-gradient(100deg, #38bdf8 0%, #818cf8 38%, #c084fc 62%, #ff3366 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                }}
+              >
+                Frostfire
+              </span>
+              <span
+                aria-hidden="true"
+                className="absolute inset-0 font-bold text-xs sm:text-sm tracking-tight select-none text-cycle-white pointer-events-none block"
+              >
+                Frostfire
+              </span>
             </span>
           )}
 

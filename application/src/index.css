@@ -499,3 +499,33 @@ html.light textarea::placeholder {
   background-clip: text;
 }
 
+@keyframes cycle-white {
+  0% { background-position: 125% 0; }
+  66% { background-position: 50% 0; }
+  86% { background-position: -25% 0; }
+  100% { background-position: -25% 0; }
+}
+
+.text-cycle-white {
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    transparent 46%,
+    #ffffff 49.5%,
+    #ffffff 50.5%,
+    transparent 54%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: cycle-white 1.4s linear infinite;
+  animation-play-state: paused;
+  will-change: background-position;
+}
+
+.group:hover .text-cycle-white {
+  animation-play-state: running;
+}
+
+
