@@ -80,6 +80,7 @@ export interface AgentEntity {
   name: string;
   role: string;
   description?: string;
+  systemPrompt?: string;
   notifications?: boolean;
   isTeam?: boolean;
   memberIds?: string[];
@@ -97,6 +98,7 @@ export interface AgentSessionInfo {
   name?: string;
   role?: string;
   description?: string;
+  system_prompt?: string;
   display_number: number;
   display_slot?: number;
   vnc_port: number;

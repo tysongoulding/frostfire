@@ -3490,10 +3490,65 @@ fn load_skills_catalog() -> String {
     catalog
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ChatMessagePayload {
+    pub role: String,
+    pub content: String,
+}
+
+fn load_agents_md() -> String {
+    let search_paths = [
+        "AGENTS.md",
+        "../AGENTS.md",
+        "../../AGENTS.md",
+        "../../../AGENTS.md",
+        "c:/Users/tyson/.repo/personal/frostfire/AGENTS.md",
+        "c:/Users/tyson/.repo/personal/frostfire-cloud/AGENTS.md",
+        "/home/ubuntu/AGENTS.md",
+    ];
+
+    for path in search_paths {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            let trimmed = content.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+    }
+
+    include_str!("../../../AGENTS.md").trim().to_string()
+}
+
+fn load_system_md() -> String {
+    let search_paths = [
+        "SYSTEM.md",
+        "../SYSTEM.md",
+        "../../SYSTEM.md",
+        "../../../SYSTEM.md",
+        "c:/Users/tyson/.repo/personal/frostfire/SYSTEM.md",
+        "/home/ubuntu/SYSTEM.md",
+    ];
+
+    for path in search_paths {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            let trimmed = content.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+    }
+
+    include_str!("../../../SYSTEM.md").trim().to_string()
+}
+
 async fn query_bedrock_or_gemini(
     user_id: &str,
     display_number: u32,
     prompt: &str,
+    history: Option<&[ChatMessagePayload]>,
+    agent_name_override: Option<&str>,
+    agent_role_override: Option<&str>,
+    custom_system_prompt: Option<&str>,
 ) -> Option<(Option<String>, String, Option<String>)> {
     let http = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(12))
@@ -3501,47 +3556,58 @@ async fn query_bedrock_or_gemini(
         .ok()?;
 
     let skills_catalog = load_skills_catalog();
+    let agents_md = load_agents_md();
+    let system_md = load_system_md();
 
     let is_slot_1 = display_number == 1;
-    let agent_name = if is_slot_1 {
+    let agent_name = agent_name_override.unwrap_or(if is_slot_1 {
         "Claude 3.7 Sonnet"
     } else {
         "Gemini 3.8 Flash"
-    };
+    });
+    let agent_role = agent_role_override.unwrap_or(if is_slot_1 {
+        "Screen Capture & Computer Use"
+    } else {
+        "Terminal & Cloud Automation"
+    });
+
+    let persona_block = format!(
+        "## Active Agent Persona\n- Name: {}\n- Role: {}\n- Target User: {}\n- Target Display: :{}\n{}",
+        agent_name,
+        agent_role,
+        user_id,
+        display_number,
+        custom_system_prompt.unwrap_or("").trim()
+    );
 
     let system_prompt = format!(
-        "You are {}, an autonomous cloud computer agent with direct execution control over the machine on Display :{} for user {}.\n\
-        You have direct access to the desktop GUI, terminal, browser, filesystem, screen capture capabilities (scrot), and the managed skills library at `/home/ubuntu/.agent/skills/`.\n\
-        Whenever the user asks you to perform an action (open Chrome, browse to a site, open terminal, capture screen / screenshot, run commands, create/modify/delete files, press keys, execute skills, etc.), DO NOT describe steps or give instructions. You MUST execute the real Linux command.\n\n\
-        Available tools and launchers:
-        1. Browser: /usr/local/bin/chrome-launcher '<url>'
-        2. Terminal: /usr/local/bin/terminal-launcher
-        3. Filesystem Manager: /usr/local/bin/files-launcher
-        4. Screen capture / screenshot: scrot -o /tmp/screen.png
-        5. Running/typing into Terminal: /usr/local/bin/terminal-launcher && sleep 0.4 && xdotool type --delay 12 '<command>' && sleep 0.2 && xdotool key Return
-        6. GUI interaction: xdotool key <Key> (e.g., Return, Tab, BackSpace, Escape, ctrl+c), or xdotool type '<text>'
-        7. Files & Shell: Any standard Linux bash command (e.g. echo 'text' > file.txt, cat file.txt, rm file.txt, ls -la, python3 script.py, df -h, curl ...)
-        8. Messaging & Chat: When sending a message in Google Messages or chat apps, click the input area, type the text, and hit Return: xdotool mousemove 500 545 click 1 && sleep 0.2 && xdotool type --delay 12 '<text>' && sleep 0.2 && xdotool key Return
-        9. IMPORTANT: Never output `&;` (invalid syntax). Always chain sequential commands using `&&` or `;`.\n\n\
-        Installed Managed Bot Skills (on-machine at `/home/ubuntu/.agent/skills/<skill>/SKILL.md`):
-        {}\n\
-        Respond ONLY with valid JSON in this exact structure:\n\
-        {{\n\
-          \"command\": \"<the exact bash or xdotool command to execute on Display :{}, or empty string if answering a conversational question>\",\n\
-          \"reply\": \"<short friendly confirmation or answer to the user>\",\n\
-          \"tool\": \"<browser|terminal|gui|file|bash|chat|screen_capture|skill>\"\n\
-        }}",
-        agent_name, display_number, user_id, skills_catalog, display_number
+        "{}\n\n{}\n\n<agents_md>\n{}\n</agents_md>\n\n<installed_skills>\n{}\n</installed_skills>",
+        system_md, persona_block, agents_md, skills_catalog
     );
 
     // 1. Anthropic direct API (if ANTHROPIC_API_KEY is present and targeting slot 1)
     if is_slot_1 {
         if let Some(anthropic_key) = resolve_anthropic_key() {
+            let mut anthropic_messages = Vec::new();
+            if let Some(hist) = history {
+                for msg in hist {
+                    let role = if msg.role == "assistant" { "assistant" } else { "user" };
+                    anthropic_messages.push(serde_json::json!({
+                        "role": role,
+                        "content": msg.content
+                    }));
+                }
+            }
+            anthropic_messages.push(serde_json::json!({
+                "role": "user",
+                "content": prompt
+            }));
+
             let body = serde_json::json!({
                 "model": "claude-3-7-sonnet-20250219",
                 "max_tokens": 1024,
                 "system": system_prompt,
-                "messages": [{"role": "user", "content": prompt}]
+                "messages": anthropic_messages
             });
             if let Ok(resp) = http
                 .post("https://api.anthropic.com/v1/messages")
@@ -3566,10 +3632,26 @@ async fn query_bedrock_or_gemini(
         }
     }
 
+    // Build multi-turn Bedrock messages
+    let mut bedrock_messages = Vec::new();
+    if let Some(hist) = history {
+        for msg in hist {
+            let role = if msg.role == "assistant" { "assistant" } else { "user" };
+            bedrock_messages.push(serde_json::json!({
+                "role": role,
+                "content": [{"text": msg.content}]
+            }));
+        }
+    }
+    bedrock_messages.push(serde_json::json!({
+        "role": "user",
+        "content": [{"text": prompt}]
+    }));
+
     // 2. Bedrock Converse via local AWS CLI (fast, uses active AWS credentials / profile)
     let cli_res = tokio::task::spawn_blocking({
         let sys = system_prompt.clone();
-        let p = prompt.to_string();
+        let b_msgs = bedrock_messages.clone();
         let primary_model = if is_slot_1 {
             "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
         } else {
@@ -3577,8 +3659,7 @@ async fn query_bedrock_or_gemini(
         };
         move || {
             let sys_json = serde_json::json!([{"text": sys}]).to_string();
-            let msg_json =
-                serde_json::json!([{"role": "user", "content": [{"text": p}]}]).to_string();
+            let msg_json = serde_json::to_string(&b_msgs).unwrap_or_else(|_| "[]".to_string());
             let mut cmd = std::process::Command::new("aws");
             #[cfg(windows)]
             {
@@ -3652,7 +3733,7 @@ async fn query_bedrock_or_gemini(
             "https://bedrock-runtime.us-west-2.amazonaws.com/model/amazon.nova-lite-v1:0/converse";
         let body = serde_json::json!({
             "system": [{"text": system_prompt}],
-            "messages": [{"role": "user", "content": [{"text": prompt}]}],
+            "messages": bedrock_messages,
             "inferenceConfig": {"maxTokens": 400, "temperature": 0.1}
         });
 
@@ -3679,17 +3760,32 @@ async fn query_bedrock_or_gemini(
         }
     }
 
-    // 2. Google Gemini generateContent API
+    // 3. Google Gemini generateContent API
     if let Some(key) = resolve_gemini_key() {
         let gemini_url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={}",
             key
         );
-        let prompt_text = format!("{}\nUser request: {}", system_prompt, prompt);
+        let mut gemini_contents = Vec::new();
+        if let Some(hist) = history {
+            for msg in hist {
+                let role = if msg.role == "assistant" { "model" } else { "user" };
+                gemini_contents.push(serde_json::json!({
+                    "role": role,
+                    "parts": [{"text": msg.content}]
+                }));
+            }
+        }
+        gemini_contents.push(serde_json::json!({
+            "role": "user",
+            "parts": [{"text": prompt}]
+        }));
+
         let body = serde_json::json!({
-            "contents": [{
-                "parts": [{"text": prompt_text}]
-            }]
+            "system_instruction": {
+                "parts": [{"text": system_prompt}]
+            },
+            "contents": gemini_contents
         });
 
         if let Ok(resp) = http
@@ -3722,6 +3818,10 @@ pub async fn send_agent_turn(
     prompt: String,
     vm_host: Option<String>,
     exec_port: Option<u16>,
+    history: Option<Vec<ChatMessagePayload>>,
+    agent_name: Option<String>,
+    agent_role: Option<String>,
+    custom_system_prompt: Option<String>,
 ) -> Result<serde_json::Value, String> {
     tracing::info!(
         "🤖 [Agent Dispatch] User '{}' targeting Display :{} (host: {:?}) -> \"{}\"",
@@ -3739,7 +3839,16 @@ pub async fn send_agent_turn(
 
     // 1. Resolve action + reply from LLM or fallback
     let (mut command_to_run, mut reply, detected_tool) = if let Some((cmd, rep, tool)) =
-        query_bedrock_or_gemini(&user_id, display_number, &prompt).await
+        query_bedrock_or_gemini(
+            &user_id,
+            display_number,
+            &prompt,
+            history.as_deref(),
+            agent_name.as_deref(),
+            agent_role.as_deref(),
+            custom_system_prompt.as_deref(),
+        )
+        .await
     {
         (cmd, rep, tool)
     } else {
@@ -3947,6 +4056,10 @@ mod tests {
             "user2".to_string(),
             2,
             "check system status".to_string(),
+            None,
+            None,
+            None,
+            None,
             None,
             None,
         )

@@ -25,6 +25,7 @@ function sessionToEntity(s: AgentSessionInfo): AgentEntity {
     name: s.name && !s.name.includes('Agent Slot') ? s.name : defaultName,
     role: hasCustomRole ? s.role! : defaultRole,
     description: s.description || (isSlot1 ? 'Autonomous cloud computer agent powered by Claude 3.7 Sonnet with screen capture capability.' : ''),
+    systemPrompt: s.system_prompt,
     notifications: true,
     displayNumber: s.display_number,
     vncPort: s.vnc_port,
@@ -578,6 +579,12 @@ const MainApp: React.FC = () => {
     const rawPort = currentUser?.execPort;
     const execPort = (!rawPort || rawPort === 3000 || rawPort === 443) ? 1339 : rawPort;
 
+    const activeThread = messagesByUser[activeUserId]?.[selectedAgentId] || [];
+    const historyPayload = activeThread.slice(-15).map((m) => ({
+      role: m.sender === 'user' ? 'user' : 'assistant',
+      content: m.text,
+    }));
+
     try {
       let res: any = null;
       try {
@@ -588,6 +595,10 @@ const MainApp: React.FC = () => {
           prompt: text,
           vmHost,
           execPort,
+          history: historyPayload,
+          agentName: targetAgent?.name,
+          agentRole: targetAgent?.role,
+          customSystemPrompt: targetAgent?.systemPrompt,
         });
       } catch {
         // Direct fallback to EC2 agent turn API if running outside Tauri
@@ -599,6 +610,10 @@ const MainApp: React.FC = () => {
               userId: activeUserId,
               display: displayNumber,
               prompt: text,
+              history: historyPayload,
+              agentName: targetAgent?.name,
+              agentRole: targetAgent?.role,
+              customSystemPrompt: targetAgent?.systemPrompt,
             }),
           });
           if (resp.ok) {
