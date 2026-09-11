@@ -3230,16 +3230,14 @@ fn fallback_command_from_prompt(
     }
 
     // 3. Browser & Chrome
-    let is_open_messages = p.contains("open google messages")
+    let is_open_messages = p.contains("google messages")
         || p.contains("open messages")
         || p.contains("launch messages")
-        || p.contains("navigate to google messages")
         || p.contains("navigate to messages")
-        || (p.contains("google messages")
-            && (p.contains("open")
-                || p.contains("navigate")
-                || p.contains("goto")
-                || p.contains("launch")));
+        || p.contains("check messages")
+        || p.contains("read messages")
+        || p.contains("view messages")
+        || (p.contains("messages") && (p.contains("chrome") || p.contains("browser") || p.contains("from")));
 
     // Screen capture / screenshot
     if p.contains("screenshot")
