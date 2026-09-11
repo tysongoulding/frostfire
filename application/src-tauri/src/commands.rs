@@ -2421,7 +2421,7 @@ pub async fn create_agent_session(
     let vm_host = std::env::var("EC2_AGENT_HOST")
         .ok()
         .filter(|h| !h.trim().is_empty())
-        .or_else(|| Some("35.89.125.63".to_string()));
+        .or_else(|| Some("44.242.94.86".to_string()));
 
     let team_id = if is_team.unwrap_or(false) {
         Some(format!("team_{}", uuid::Uuid::new_v4().simple()))
@@ -2640,9 +2640,13 @@ pub async fn execute_remote_cloud_command(
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
     let host_raw = vm_host
-        .filter(|h| !h.trim().is_empty())
-        .or_else(|| std::env::var("EC2_AGENT_HOST").ok())
-        .unwrap_or_else(|| "35.89.125.63".to_string());
+        .filter(|h| !h.trim().is_empty() && h.trim() != "35.89.125.63")
+        .or_else(|| {
+            std::env::var("EC2_AGENT_HOST")
+                .ok()
+                .filter(|h| !h.trim().is_empty() && h.trim() != "35.89.125.63")
+        })
+        .unwrap_or_else(|| "44.242.94.86".to_string());
 
     let is_lambda = host_raw.contains("lambda-url") || host_raw.starts_with("https://");
     let url = if is_lambda {
@@ -2652,12 +2656,14 @@ pub async fn execute_remote_cloud_command(
             .trim_end_matches('/');
         format!("https://{}/api/exec", clean_host)
     } else {
-        let port: u16 = exec_port.unwrap_or_else(|| {
-            std::env::var("EC2_EXEC_PORT")
+        let port: u16 = match exec_port {
+            Some(p) if p != 0 && p != 3000 && p != 443 => p,
+            _ => std::env::var("EC2_EXEC_PORT")
                 .ok()
                 .and_then(|p| p.parse().ok())
-                .unwrap_or(1339)
-        });
+                .filter(|&p| p != 0 && p != 3000 && p != 443)
+                .unwrap_or(1339),
+        };
         let clean_host = host_raw
             .trim_start_matches("http://")
             .trim_end_matches('/');
@@ -2981,11 +2987,14 @@ async fn execute_on_remote_pc(
         .map_err(|e| e.to_string())?;
 
     let host_raw = vm_host
-        .filter(|h| !h.trim().is_empty())
+        .filter(|h| !h.trim().is_empty() && h.trim() != "35.89.125.63")
         .map(|h| h.trim().to_string())
-        .unwrap_or_else(|| {
-            std::env::var("EC2_AGENT_HOST").unwrap_or_else(|_| "35.89.125.63".to_string())
-        });
+        .or_else(|| {
+            std::env::var("EC2_AGENT_HOST")
+                .ok()
+                .filter(|h| !h.trim().is_empty() && h.trim() != "35.89.125.63")
+        })
+        .unwrap_or_else(|| "44.242.94.86".to_string());
 
     let is_lambda = host_raw.contains("lambda-url") || host_raw.starts_with("https://");
     let url = if is_lambda {
@@ -2995,7 +3004,14 @@ async fn execute_on_remote_pc(
             .trim_end_matches('/');
         format!("https://{}/api/exec", clean_host)
     } else {
-        let port = exec_port.unwrap_or(1339);
+        let port: u16 = match exec_port {
+            Some(p) if p != 0 && p != 3000 && p != 443 => p,
+            _ => std::env::var("EC2_EXEC_PORT")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .filter(|&p| p != 0 && p != 3000 && p != 443)
+                .unwrap_or(1339),
+        };
         let clean_host = host_raw
             .trim_start_matches("http://")
             .trim_end_matches('/');

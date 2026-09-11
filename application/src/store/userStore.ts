@@ -43,7 +43,7 @@ export const DEFAULT_USERS: UserProfile[] = [
     role: "User 1",
     bio: "Workspace User 1",
     customInstructions: "Prefer concise explanations and clean, modular code. Respect project boundaries.",
-    vmHost: "35.89.125.63",
+    vmHost: "44.242.94.86",
     agentPorts: { agent1: 6080, agent2: 6081, agent3: 6082 },
     execPort: 1339,
     isDefault: true,
@@ -56,7 +56,7 @@ export const DEFAULT_USERS: UserProfile[] = [
     role: "User 2",
     bio: "Workspace User 2",
     customInstructions: "Prefer concise explanations and clean, modular code. Respect project boundaries.",
-    vmHost: "35.89.125.63",
+    vmHost: "44.242.94.86",
     agentPorts: { agent1: 6083, agent2: 6084, agent3: 6085 },
     execPort: 1339,
     isDefault: false,
@@ -69,7 +69,7 @@ export const DEFAULT_USERS: UserProfile[] = [
     role: "User 3",
     bio: "Workspace User 3",
     customInstructions: "Prefer concise explanations and clean, modular code. Respect project boundaries.",
-    vmHost: "35.89.125.63",
+    vmHost: "44.242.94.86",
     agentPorts: { agent1: 6086, agent2: 6087, agent3: 6088 },
     execPort: 1339,
     isDefault: false,
@@ -79,7 +79,7 @@ export const DEFAULT_USERS: UserProfile[] = [
 
 export const DEFAULT_USER_PROFILE: UserProfile = DEFAULT_USERS[0];
 
-const STORAGE_KEY = "frostfire-users-v3";
+const STORAGE_KEY = "frostfire-users-v4";
 
 function loadInitialUsers(): { activeUserId: string; users: UserProfile[] } {
   if (typeof window === "undefined") {
@@ -88,6 +88,7 @@ function loadInitialUsers(): { activeUserId: string; users: UserProfile[] } {
   try {
     const raw =
       localStorage.getItem(STORAGE_KEY) ||
+      localStorage.getItem("frostfire-users-v3") ||
       localStorage.getItem("frostfire-users-v2") ||
       localStorage.getItem("frostfire-users-v1");
     if (raw) {
@@ -103,7 +104,7 @@ function loadInitialUsers(): { activeUserId: string; users: UserProfile[] } {
             id: defUser.id,
             name: targetNames[idx],
             email: targetEmails[idx],
-            vmHost: (!existing.vmHost || existing.vmHost === "44.242.94.86") ? "35.89.125.63" : existing.vmHost,
+            vmHost: (!existing.vmHost || existing.vmHost === "35.89.125.63") ? "44.242.94.86" : existing.vmHost,
             execPort: (!existing.execPort || existing.execPort === 3000 || existing.execPort === 443) ? 1339 : existing.execPort,
           };
         });
@@ -139,7 +140,7 @@ export const useUserStore = create<UserState>((set, get) => ({
       customInstructions: profile.customInstructions || "Prefer concise answers.",
       vmHost: profile.vmHost || "44.242.94.86",
       agentPorts: profile.agentPorts || { agent1: 6080, agent2: 6081, agent3: 6082 },
-      execPort: profile.execPort || 3000,
+      execPort: profile.execPort || 1339,
       isDefault: false,
       createdAt: new Date().toISOString(),
     };

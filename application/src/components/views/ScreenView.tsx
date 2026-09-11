@@ -11,6 +11,7 @@ import {
   Snowflake,
   X,
 } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 import { getVncUrl, resolveVncSession, DEFAULT_EC2_HOST } from '../../lib/vnc';
 import { useUserStore } from '../../store/userStore';
 
@@ -48,7 +49,7 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
 
   const displayNumber = propDisplayNumber ?? 1;
   const rawVmHost = propVmHost || currentUser?.vmHost || DEFAULT_EC2_HOST;
-  const vmHost = (!rawVmHost || rawVmHost === '44.242.94.86') ? DEFAULT_EC2_HOST : rawVmHost;
+  const vmHost = (!rawVmHost || rawVmHost === '35.89.125.63') ? DEFAULT_EC2_HOST : rawVmHost;
   const execPort = propExecPort ?? (currentUser?.execPort || 1339);
   const [resolvedPort, setResolvedPort] = useState<number | undefined>(propVncPort);
 
@@ -72,12 +73,40 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
     scale: 'fit',
   });
 
+  // Handle connection and reconnection state for Loading... overlay
   useEffect(() => {
     setIsLoading(true);
+
+    const handleMessage = (e: MessageEvent) => {
+      if (e.data && e.data.type === 'novnc-status') {
+        if (e.data.status === 'connected') {
+          setIsLoading(false);
+        } else if (e.data.status === 'disconnected' || e.data.status === 'connecting') {
+          setIsLoading(true);
+        }
+      }
+    };
+
+    const handleOffline = () => setIsLoading(true);
+    const handleOnline = () => {
+      setIsLoading(true);
+      setStreamEpoch((e) => e + 1);
+    };
+
+    window.addEventListener('message', handleMessage);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+
     const timer = setTimeout(() => {
       setIsLoading(false);
-    }, 1800);
-    return () => clearTimeout(timer);
+    }, 2200);
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+      clearTimeout(timer);
+    };
   }, [vncUrl, streamEpoch]);
 
   const handleLaunchApp = async (app: 'browser' | 'terminal' | 'files') => {
@@ -88,47 +117,71 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
         ? '/usr/local/bin/terminal-launcher &'
         : '/usr/local/bin/files-launcher &';
 
-    const isLambda = vmHost.includes('lambda-url') || vmHost.startsWith('https://');
-    const baseUrl = isLambda
-      ? (vmHost.startsWith('http') ? vmHost : `https://${vmHost}`).replace(/\/+$/, '')
-      : `http://${vmHost}:${execPort}`;
-    const execUrl = `${baseUrl}/api/exec`;
+    console.log(`[ScreenView] Launching ${app} via command:`, cmd);
 
-    // 1. Immediate direct HTTP dispatch to remote executor (15ms latency)
-    try {
-      await fetch(execUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ display: displayNumber, command: cmd, cwd: '/home/ubuntu', background: true }),
-      });
-      return;
-    } catch {}
+    const targetHost = vmHost || DEFAULT_EC2_HOST;
+    const targetPort = execPort || 1339;
 
-    // 2. Tauri IPC backend invocation fallback
+    let dispatched = false;
+
+    // 1. Native Tauri IPC dispatch via Rust backend
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('execute_remote_cloud_command', {
+      const res = await invoke('execute_remote_cloud_command', {
         command: cmd,
         display: displayNumber,
-        vmHost,
-        execPort,
+        background: true,
+        vmHost: targetHost,
+        execPort: targetPort,
       });
+      console.log(`[ScreenView] Launched ${app} via Tauri IPC:`, res);
+      dispatched = true;
       return;
-    } catch {}
+    } catch (ipcErr) {
+      console.warn(`[ScreenView] Tauri IPC launch fallback:`, ipcErr);
+    }
+
+    // 2. Direct HTTP dispatch fallback with timeout
+    if (!dispatched) {
+      try {
+        const isLambda = targetHost.includes('lambda-url') || targetHost.startsWith('https://');
+        const baseUrl = isLambda
+          ? (targetHost.startsWith('http') ? targetHost : `https://${targetHost}`).replace(/\/+$/, '')
+          : `http://${targetHost}:${targetPort}`;
+        const execUrl = `${baseUrl}/api/exec`;
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        const resp = await fetch(execUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ display: displayNumber, command: cmd, cwd: '/home/ubuntu', background: true }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (resp.ok) {
+          console.log(`[ScreenView] Launched ${app} via direct HTTP`);
+          dispatched = true;
+          return;
+        }
+      } catch (httpErr) {
+        console.warn(`[ScreenView] Direct HTTP launch fallback:`, httpErr);
+      }
+    }
 
     // 3. Agent turn fallback
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('send_agent_turn', {
-        userId: currentUserId,
-        displayNumber,
-        prompt: app === 'browser' ? 'open chrome' : app === 'terminal' ? 'open terminal' : 'launch filesystem',
-        vmHost,
-        execPort,
-      });
-      setTimeout(() => setStreamEpoch((e) => e + 1), 500);
-    } catch (e) {
-      console.error('Failed to launch application:', e);
+    if (!dispatched) {
+      try {
+        await invoke('send_agent_turn', {
+          userId: currentUserId,
+          displayNumber,
+          prompt: app === 'browser' ? 'open chrome' : app === 'terminal' ? 'open terminal' : 'launch filesystem',
+          vmHost: targetHost,
+          execPort: targetPort,
+        });
+        console.log(`[ScreenView] Dispatched ${app} via agent turn`);
+      } catch (e) {
+        console.error('[ScreenView] Failed to launch application:', e);
+      }
     }
   };
 
@@ -142,15 +195,15 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
 
   return (
     <div className="flex-1 flex flex-col h-full w-full bg-theme-bg relative overflow-hidden select-none font-sans">
-      {/* Top Left Exit Button to return to Chat */}
-      <div className="absolute top-4 left-4 z-30 pointer-events-auto">
+      {/* Top Right Exit Button to return to Chat */}
+      <div className="absolute top-4 right-4 z-30 pointer-events-auto">
         <button
           onClick={onSwitchToChat}
           className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-theme-surface/90 hover:bg-theme-surface text-theme-text-primary border border-theme-border shadow-lg backdrop-blur-md text-sm font-medium transition-all cursor-pointer group"
           title="Exit to Chat"
         >
-          <ArrowLeft className="w-4 h-4 text-theme-text-muted group-hover:text-theme-text-primary transition-colors" />
           <span>Exit to Chat</span>
+          <ArrowLeft className="w-4 h-4 rotate-180 text-theme-text-muted group-hover:text-theme-text-primary transition-colors" />
         </button>
       </div>
 

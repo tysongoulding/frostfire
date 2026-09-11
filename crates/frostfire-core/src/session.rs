@@ -204,7 +204,12 @@ impl AgentSessionManager {
                     if profile_path.exists() {
                         match std::fs::read_to_string(&profile_path) {
                             Ok(content) => match serde_json::from_str::<AgentSessionInfo>(&content) {
-                                Ok(info) => sessions.push(info),
+                                Ok(mut info) => {
+                                    if info.vm_host.trim().is_empty() || info.vm_host.trim() == "35.89.125.63" {
+                                        info.vm_host = "44.242.94.86".to_string();
+                                    }
+                                    sessions.push(info);
+                                }
                                 Err(e) => {
                                     tracing::warn!(
                                         "Failed to parse profile at {:?}: {}",
@@ -260,7 +265,9 @@ impl AgentSessionManager {
 
         let id = Self::generate_agent_id();
         let created_at = chrono::Utc::now().to_rfc3339();
-        let host = vm_host.unwrap_or_else(|| "44.242.94.86".to_string());
+        let host = vm_host
+            .filter(|h| !h.trim().is_empty() && h.trim() != "35.89.125.63")
+            .unwrap_or_else(|| "44.242.94.86".to_string());
         let session_dir_str = agents_dir.join(&id).to_string_lossy().to_string();
 
         let session = AgentSessionInfo {

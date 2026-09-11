@@ -1,4 +1,4 @@
-export const DEFAULT_EC2_HOST = '35.89.125.63';
+export const DEFAULT_EC2_HOST = '44.242.94.86';
 export const DEFAULT_LAMBDA_HOST = '4hkbgj6zkmfm674e3nxlpagshq0moaoy.lambda-url.us-west-2.on.aws';
 
 export interface VncOptions {
@@ -48,7 +48,7 @@ export function getVncUrl(
   const tokenQuery = customToken ? `token=${encodeURIComponent(customToken)}&` : '';
   const resizeMode = scale === 'fit' ? 'scale' : 'off';
 
-  return `${protocol}://${host}:${port}/vnc.html?${tokenQuery}autoconnect=true&resize=${resizeMode}&reconnect=true`;
+  return `${protocol}://${host}:${port}/vnc.html?${tokenQuery}autoconnect=true&resize=${resizeMode}&reconnect=true&_v=stealth_v4`;
 }
 
 export function getVncWebSocketUrl(

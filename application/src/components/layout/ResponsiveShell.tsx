@@ -241,6 +241,9 @@ export const ResponsiveShell: React.FC<ResponsiveShellProps> = ({
                         missionObjective={missionObjective}
                         onOpenScreenModal={onOpenScreenModal}
                         activeTab={activeTab}
+                        displayNumber={displayNumber}
+                        vncPort={vncPort}
+                        vmHost={vmHost}
                       />
                     )}
                   </div>

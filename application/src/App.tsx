@@ -573,8 +573,10 @@ const MainApp: React.FC = () => {
 
     const targetAgent = agents[selectedAgentId];
     const displayNumber = targetAgent?.displayNumber ?? 1;
-    const vmHost = targetAgent?.vmHost || currentUser.vmHost || DEFAULT_EC2_HOST;
-    const execPort = currentUser.execPort || 1339;
+    const rawVmHost = targetAgent?.vmHost || currentUser?.vmHost;
+    const vmHost = (!rawVmHost || rawVmHost === '35.89.125.63') ? DEFAULT_EC2_HOST : rawVmHost;
+    const rawPort = currentUser?.execPort;
+    const execPort = (!rawPort || rawPort === 3000 || rawPort === 443) ? 1339 : rawPort;
 
     try {
       let res: any = null;
@@ -742,7 +744,10 @@ const MainApp: React.FC = () => {
             vncPort={currentAgent.vncPort}
             vmHost={currentAgent.vmHost}
             userId={activeUserId}
-            onSwitchToChat={() => setActiveTab('chat')}
+            onSwitchToChat={() => {
+              setActiveTab('chat');
+              setRightPanelOpen(true);
+            }}
             onSendCommand={handleSendMessage}
           />
         ) : (

@@ -40,6 +40,37 @@ interface RightPanelProps {
   vmHost?: string;
 }
 
+// Subcomponent for the right panel mini screen preview with stream termination on unmount
+const MiniScreenPreview: React.FC<{
+  vncUrl: string;
+  agentName: string;
+}> = ({ vncUrl, agentName }) => {
+  const iframeRef = React.useRef<HTMLIFrameElement>(null);
+
+  React.useEffect(() => {
+    return () => {
+      // Explicitly post disconnect to iframe on unmount
+      if (iframeRef.current) {
+        try {
+          iframeRef.current.contentWindow?.postMessage({ action: 'disconnect' }, '*');
+        } catch (_) {}
+      }
+    };
+  }, []);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      key={vncUrl}
+      src={vncUrl}
+      title={`${agentName}'s Live Display`}
+      className="w-full h-full border-none pointer-events-none block overflow-hidden bg-transparent"
+      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+      allow="clipboard-read; clipboard-write; autoplay; fullscreen"
+    />
+  );
+};
+
 export const RightPanel: React.FC<RightPanelProps> = ({
   isOpen = true,
   onClose,
@@ -291,7 +322,8 @@ export const RightPanel: React.FC<RightPanelProps> = ({
               /* Agent Screen Box (Only shown for individual agents) */
               (() => {
                 const displayNumber = propDisplayNumber ?? 1;
-                const vmHost = propVmHost || currentUser.vmHost || DEFAULT_EC2_HOST;
+                const rawVmHost = propVmHost || currentUser?.vmHost || DEFAULT_EC2_HOST;
+                const vmHost = (!rawVmHost || rawVmHost === '35.89.125.63') ? DEFAULT_EC2_HOST : rawVmHost;
                 const agentPort = propVncPort || (6079 + displayNumber);
                 const vncUrl = getVncUrl(displayNumber, { host: vmHost, port: agentPort, scale: 'fit' });
                 return (
@@ -299,15 +331,10 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                     <div
                       onClick={onOpenScreenModal}
                       className="group relative w-full aspect-[16/10] bg-black rounded-xl border border-theme-border overflow-hidden cursor-pointer shadow-sm hover:border-theme-accent-primary transition-all flex flex-col justify-between"
+                      title="Click to expand to full screen"
                     >
                       {isOpen && activeTab !== 'screen' ? (
-                        <iframe
-                          key={vncUrl}
-                          src={vncUrl}
-                          title={`${agentName}'s Live Display`}
-                          className="w-full h-full border-none pointer-events-none"
-                          sandbox="allow-scripts allow-same-origin"
-                        />
+                        <MiniScreenPreview vncUrl={vncUrl} agentName={agentName} />
                       ) : isOpen && activeTab === 'screen' ? (
                         <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-950/90 p-4 text-center">
                           <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping mb-2.5" />
