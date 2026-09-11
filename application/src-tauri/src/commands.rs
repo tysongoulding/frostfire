@@ -3657,6 +3657,24 @@ async fn query_bedrock_or_gemini(
             let sys_json = serde_json::json!([{"text": sys}]).to_string();
             let msg_json = serde_json::to_string(&b_msgs).unwrap_or_else(|_| "[]".to_string());
 
+            let temp_dir = std::env::temp_dir();
+            let rand_id = uuid::Uuid::new_v4().simple();
+            let sys_file = temp_dir.join(format!("ff_sys_{}.json", rand_id));
+            let msg_file = temp_dir.join(format!("ff_msg_{}.json", rand_id));
+
+            if std::fs::write(&sys_file, &sys_json).is_err() || std::fs::write(&msg_file, &msg_json).is_err() {
+                return None;
+            }
+
+            let sys_arg = format!("file://{}", sys_file.to_string_lossy().replace('\\', "/"));
+            let msg_arg = format!("file://{}", msg_file.to_string_lossy().replace('\\', "/"));
+
+            let aws_bin = if std::path::Path::new(r"C:\Program Files\Amazon\AWSCLIV2\aws.exe").exists() {
+                r"C:\Program Files\Amazon\AWSCLIV2\aws.exe"
+            } else {
+                "aws"
+            };
+
             let mut candidates: Vec<String> = Vec::new();
             if let Some(cm) = custom_model {
                 candidates.push(cm);
@@ -3666,8 +3684,9 @@ async fn query_bedrock_or_gemini(
             candidates.push("us.amazon.nova-pro-v1:0".to_string());
             candidates.push("amazon.nova-lite-v1:0".to_string());
 
+            let mut final_res = None;
             for model_id in &candidates {
-                let mut cmd = std::process::Command::new("aws");
+                let mut cmd = std::process::Command::new(aws_bin);
                 #[cfg(windows)]
                 {
                     use std::os::windows::process::CommandExt;
@@ -3681,9 +3700,9 @@ async fn query_bedrock_or_gemini(
                     "--region",
                     "us-west-2",
                     "--system",
-                    &sys_json,
+                    &sys_arg,
                     "--messages",
-                    &msg_json,
+                    &msg_arg,
                     "--output",
                     "json",
                 ]);
@@ -3691,13 +3710,20 @@ async fn query_bedrock_or_gemini(
                     if output.status.success() {
                         if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
                             if let Some(text) = json.pointer("/output/message/content/0/text").and_then(|v| v.as_str()) {
-                                return Some(parse_action_response(text));
+                                final_res = Some(parse_action_response(text));
+                                break;
                             }
                         }
+                    } else {
+                        tracing::warn!("Bedrock model {} failed: {}", model_id, String::from_utf8_lossy(&output.stderr));
                     }
                 }
             }
-            None
+
+            let _ = std::fs::remove_file(&sys_file);
+            let _ = std::fs::remove_file(&msg_file);
+
+            final_res
         }
     })
     .await
