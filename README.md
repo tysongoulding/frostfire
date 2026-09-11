@@ -1,33 +1,31 @@
-# Frostfire Cloud (Private Control Plane & MicroVM Infrastructure)
+# Frostfire Cloud (User-Hosted VM & Firecracker MicroVM Infrastructure)
 
-Private cloud services, edge ingress gateway, swarm orchestrator, and autonomous microVM virtualization infrastructure for Frostfire.
+Host hypervisor daemon, kernel build pipeline, Debian 13 rootfs appliance, and turnkey AWS EC2 Spot deployment for the Frostfire User-Hosted VM.
 
 ## Architecture Layout
 
-- `cloud/`:
-  - `gateway/`: Outbound reverse-tunnel edge gateway terminating client gRPC streams.
-  - `agent/`: In-VM agent execution runtime (`hitl`, `browser`, `teach`, and computer-use models).
-  - `microvm/`: MicroVM rootfs build scripts, X11/VNC display multiplexers, and Chrome session linkers.
-- `services/`:
-  - `swarm-orchestrator/`: 4-tier swarm state machine, Blackboard event store, DAG vector canvas renderer, and Gemini turn engine.
-- `deploy/`:
-  - `aws/`: CloudFormation templates (`cloudformation.yaml`, `firecracker-hypervisor.yaml`, `poc-3user.yaml`).
-  - `gcp/`: Cloud Run & Deployment Manager configurations.
-  - `docker/`: Monolithic cloud container definitions & `docker-compose.yml`.
-  - `proxmox/`: Proxmox LXC cluster deployment scripts.
-- `scripts/`:
-  - `cloud-start.ps1`, `cloud-stop.ps1`, `cloud-status.ps1`: AWS host lifecycle management.
-  - `setup-cluster.sh`: Turnkey 1-command microVM multi-user cluster installer.
-  - `gcp-setup-wizard.sh`: GCP provisioner with nested KVM virtualization.
-- `docs/`:
-  - `MICROVM_ARCHITECTURE.md`: Complete reverse-engineered cloud microVM architecture specification.
-  - `AGENT_TEAMS_SPEC.md`: Dynamic agent-teams orchestration specification.
 - `crates/`:
-  - `frostfire-proto`: Protobuf gRPC contracts (`AgentTunnelService.OpenTunnel`).
+  - `frostfire-hypervisor/`: Bare-metal Rust hypervisor daemon orchestrating Firecracker microVMs over Unix Domain Sockets, TAP networking (`172.30.0.1/24`), and AF_VSOCK bridge.
+- `kernel/`:
+  - `build-kernel.sh`: Compiles an uncompressed monolithic Linux 6.12.6 ELF kernel (`vmlinux`, `CONFIG_MODULES=n`) with VirtIO drivers built in-tree.
+  - `kernel.config`: Reproducible Firecracker kernel configuration.
+- `rootfs/`:
+  - `build-rootfs.sh`: Debootstrap pipeline building Debian 13 (Trixie) ext4 disk image with user `box`, X11 desktop environment, Chrome, and Frostfire guest agent daemons.
+- `deploy/`:
+  - `aws/poc-host.yaml`: CloudFormation template launching an EC2 Spot `c6i.xlarge` instance with nested KVM, locked Security Group, and auto-idle shutdown protection.
+- `scripts/`:
+  - `deploy-poc.ps1`: Automated PowerShell deployment script for AWS.
+  - `deploy-poc.sh`: Automated Bash deployment script for AWS.
+  - `setup-host.sh`: Host bootstrap script installing Firecracker, KVM permissions, toolchains, and networking.
+  - `check-idle-shutdown.sh`: Host auto-idle daemon checking ports 22 and 6080 every 5 mins and halting instance after 20 mins inactivity (<$5/mo budget).
 
-## Local Development
+## Verification Gates
 
 ```bash
-# Verify all cloud workspace crates
+# Verify host hypervisor crate
 cargo test --workspace
+cargo clippy --workspace -- -D warnings
+
+# Validate AWS CloudFormation template
+aws cloudformation validate-template --template-body file://deploy/aws/poc-host.yaml
 ```

@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+# >>> box-chrome port table (from sand/src/shared/box/box-contract.ts; regenerate: pnpm --filter sand run gen:box-ports) >>>
+SAND_BOX_CDP_PORT_BASE=9222
+SAND_BOX_PORT_HOST_GATEWAY=1340
+# <<< box-chrome port table <<<
+/usr/local/bin/ensure-machine-id || true
+
+if [ -r /usr/local/bin/box-cgroups.sh ]; then
+	# shellcheck source=/dev/null
+	. /usr/local/bin/box-cgroups.sh
+	sand_cgroup_join "${SAND_CGROUP_INTERACTIVE_NAME:-interactive}"
+fi
+
+BOX_DISPLAY_NUM="${DISPLAY#:}"
+BOX_DISPLAY_NUM="${BOX_DISPLAY_NUM%%.*}"
+BOX_PRIMARY_XDG="/tmp/xdg-runtime-box"
+if [ "${BOX_DISPLAY_NUM:-1}" -ge 2 ] 2>/dev/null; then
+	CHROME_PROFILE="${CHROME_USER_DATA_DIR:-/home/box/chrome-profile-${BOX_DISPLAY_NUM}}"
+	CHROME_XDG="/tmp/xdg-runtime-box-${BOX_DISPLAY_NUM}"
+	CHROME_DEBUG_PORT="${SAND_CHROME_REMOTE_DEBUG_PORT:-$((SAND_BOX_CDP_PORT_BASE + BOX_DISPLAY_NUM))}"
+	if [ -z "${CHROME_USER_DATA_DIR:-}" ]; then
+		SAND_CHROME_PROFILE_DIR="${CHROME_PROFILE}" /usr/local/bin/link-chrome-session || true
+	fi
+else
+	CHROME_PROFILE="${CHROME_USER_DATA_DIR:-/home/box/chrome-profile}"
+	CHROME_XDG="${BOX_PRIMARY_XDG}"
+	CHROME_DEBUG_PORT="${SAND_CHROME_REMOTE_DEBUG_PORT:-$((SAND_BOX_CDP_PORT_BASE + 1))}"
+fi
+CHROME_DBUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-}"
+if [ "$(id -u)" -eq 0 ]; then
+	CHROME_DBUS_ADDRESS=""
+fi
+if [ -r "${CHROME_XDG}/dbus-session-address" ]; then
+	CHROME_DBUS_ADDRESS="$(cat "${CHROME_XDG}/dbus-session-address" 2>/dev/null || true)"
+fi
+CHROME_FLAGS=(
+	--no-sandbox
+	--disable-dev-shm-usage
+	--password-store=basic
+	--no-first-run
+	--no-default-browser-check
+	--hide-crash-restore-bubble
+	--start-maximized
+	--class=box-chrome
+	--user-data-dir="${CHROME_PROFILE}"
+)
+# WebGL on this GPU-less Xvfb box. Default --enable-unsafe-swiftshader keeps a
+# software context and prints ANGLE(... SwiftShader Device (Subzero) ...).
+# sand_enable_spoof_gpu writes /tmp/sand-enable-spoof-gpu (or set
+# SAND_ENABLE_SPOOF_GPU=1) so we launch with --use-angle=gl instead: no WebGL
+# context, and no SwiftShader renderer string. SAND_CHROME_LEGACY_GPU=1
+# restores blocklist-ignore + software WebGPU. Chrome must restart to pick up
+# a marker flip.
+if [ "${SAND_CHROME_LEGACY_GPU:-0}" = "1" ]; then
+	CHROME_FLAGS+=(
+		--ignore-gpu-blocklist
+		--enable-unsafe-webgpu
+	)
+elif [ "${SAND_ENABLE_SPOOF_GPU:-0}" = "1" ] || [ -e "${SAND_ENABLE_SPOOF_GPU_FILE:-/tmp/sand-enable-spoof-gpu}" ]; then
+	CHROME_FLAGS+=(
+		--use-angle=gl
+	)
+else
+	CHROME_FLAGS+=(
+		--enable-unsafe-swiftshader
+	)
+fi
+CHROME_FLAGS+=(
+	--remote-debugging-port="${CHROME_DEBUG_PORT}"
+	--remote-debugging-address=127.0.0.1
+)
+SAND_CHROME_UA_TOKEN="GrokAgent/1.0"
+SAND_CHROME_UA_OWNER_FILE="${SAND_CHROME_UA_OWNER_FILE:-/tmp/sand-ua-user}"
+SAND_CHROME_UA_OWNER="$(sed -n 1p "${SAND_CHROME_UA_OWNER_FILE}" 2>/dev/null | tr -cd '0-9a-f' | cut -c1-16 || true)"
+[ -z "${SAND_CHROME_UA_OWNER}" ] || SAND_CHROME_UA_TOKEN="${SAND_CHROME_UA_TOKEN} (u:${SAND_CHROME_UA_OWNER})"
+SAND_CHROME_UA_DISABLED_FILE="${SAND_CHROME_UA_DISABLED_FILE:-/tmp/sand-ua-token-disabled}"
+[ ! -e "${SAND_CHROME_UA_DISABLED_FILE}" ] || SAND_CHROME_UA_TOKEN=""
+SAND_CHROME_UA_MAJOR="$(google-chrome-stable --version 2>/dev/null | sed -n 's/^[^0-9]*\([0-9][0-9]*\)\..*$/\1/p' || true)"
+if [ -n "${SAND_CHROME_UA_MAJOR}" ] && [ -n "${SAND_CHROME_UA_TOKEN}" ]; then
+	CHROME_FLAGS+=(
+		--user-agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${SAND_CHROME_UA_MAJOR}.0.0.0 Safari/537.36 ${SAND_CHROME_UA_TOKEN}"
+	)
+fi
+SAND_EGRESS_PROXY_FILE=/tmp/sand-egress-proxy
+if [ -r "${SAND_EGRESS_PROXY_FILE}" ]; then
+	SAND_EGRESS_PROXY_ADDR="$(sed -n 1p "${SAND_EGRESS_PROXY_FILE}" 2>/dev/null || true)"
+	if [ -n "${SAND_EGRESS_PROXY_ADDR}" ]; then
+		CHROME_FLAGS+=(
+			--proxy-server="http://${SAND_EGRESS_PROXY_ADDR}"
+			--proxy-bypass-list="localhost;127.0.0.1;[::1]"
+		)
+	fi
+fi
+# Installed by POLICY, not --load-extension: this Chrome is managed (a policy
+# file exists), and managed Chrome silently ignores that switch. The entry is
+# written per launch rather than baked into the image so the proxy stays
+# opt-in — an always-installed extension would attach and then fail EVERY
+# ceremony on a box with no laptop provider, which is worse than not having it.
+/usr/local/bin/box-chrome-policy || true
+SAND_WEBAUTHN_ID_FILE=/usr/local/share/sand-webauthn-proxy.id
+SAND_WEBAUTHN_MARKER=/home/box/.sand-webauthn-proxy-enabled
+CHROME_LOG="/tmp/chrome${DISPLAY:-:1}.log"
+SAND_CHROME_PREPARE=0
+if [ "${1:-}" = "--sand-prepare" ]; then
+	SAND_CHROME_PREPARE=1
+	shift
+fi
+if [ "$(id -u)" -eq 0 ]; then
+	mkdir -p "${CHROME_PROFILE}" "${CHROME_XDG}" /workspace
+	chown box:box "${CHROME_PROFILE}" 2>/dev/null || true
+	chown -R box:box "${CHROME_XDG}" 2>/dev/null || true
+else
+	mkdir -p "${CHROME_PROFILE}" "${CHROME_XDG}" 2>/dev/null || true
+fi
+chmod 700 "${CHROME_PROFILE}" "${CHROME_XDG}" 2>/dev/null || true
+SAND_CHROME_TZ_HELPER="${SAND_CHROME_TZ_HELPER:-/usr/local/bin/sand-wallpaper}"
+if [ "${SAND_CHROME_USER_TZ:-}" = "1" ] && [ -z "${SAND_CHROME_TZ:-}" ] && [ -x "${SAND_CHROME_TZ_HELPER}" ]; then
+	SAND_CHROME_TZ="$("${SAND_CHROME_TZ_HELPER}" zone 2>/dev/null || true)"
+fi
+CHROME_ENV=(
+	env
+	DISPLAY="${DISPLAY:-:1}"
+	HOME=/home/box
+	TZ="${SAND_CHROME_TZ:-America/Los_Angeles}"
+	XDG_RUNTIME_DIR="${CHROME_XDG}"
+	DBUS_SESSION_BUS_ADDRESS="${CHROME_DBUS_ADDRESS}"
+)
+if [ -f "${SAND_WEBAUTHN_MARKER}" ]; then
+	SAND_WEBAUTHN_GATEWAY_TOKEN="${SAND_GATEWAY_TOKEN:-}"
+	SAND_WEBAUTHN_GATEWAY_PORT="${SAND_HOST_PORT:-${SAND_BOX_PORT_HOST_GATEWAY}}"
+	for SAND_WEBAUTHN_CRED_FILE in \
+		"${CHROME_XDG}/sand-gateway-credential" \
+		"${BOX_PRIMARY_XDG}/sand-gateway-credential"; do
+		[ -r "${SAND_WEBAUTHN_CRED_FILE}" ] || continue
+		SAND_WEBAUTHN_FILE_TOKEN="$(sed -n 1p "${SAND_WEBAUTHN_CRED_FILE}" 2>/dev/null || true)"
+		if [ -n "${SAND_WEBAUTHN_FILE_TOKEN}" ]; then
+			SAND_WEBAUTHN_GATEWAY_TOKEN="${SAND_WEBAUTHN_FILE_TOKEN}"
+			SAND_WEBAUTHN_GATEWAY_PORT="$(sed -n 2p "${SAND_WEBAUTHN_CRED_FILE}" 2>/dev/null || true)"
+			break
+		fi
+	done
+	CHROME_ENV+=(
+		SAND_GATEWAY_TOKEN="${SAND_WEBAUTHN_GATEWAY_TOKEN}"
+		SAND_HOST_PORT="${SAND_WEBAUTHN_GATEWAY_PORT:-${SAND_BOX_PORT_HOST_GATEWAY}}"
+	)
+fi
+if [ "$(id -u)" -eq 0 ]; then
+	CHROME_ENV=(runuser -u box -- "${CHROME_ENV[@]}")
+fi
+
+chrome_ready() {
+	curl --max-time 0.2 -fsS "http://127.0.0.1:${CHROME_DEBUG_PORT}/json/version" >/dev/null 2>&1
+}
+
+launch_chrome() {
+	setsid -f /usr/local/bin/box-bounded-log --run "${CHROME_LOG}" -- \
+		"${CHROME_ENV[@]}" \
+		nice -n 10 google-chrome-stable "${CHROME_FLAGS[@]}" "$@" \
+		</dev/null >/dev/null 2>&1 9>&-
+}
+
+wait_for_chrome() {
+	local visible="$1"
+	for _ in $(seq 1 100); do
+		if chrome_ready && { [ "${visible}" -eq 0 ] || DISPLAY="${DISPLAY:-:1}" xdotool search --onlyvisible --class chrome >/dev/null 2>&1; }; then
+			return
+		fi
+		sleep 0.1
+	done
+	return 1
+}
+
+exec 9>"${CHROME_PROFILE}/.sand-launch.lock"
+flock -w 15 9 || exit 1
+
+# A force-installed extension gets NO incognito access by default, and Chrome
+# reports that by simply not proxying: an incognito window falls through to
+# Chrome's own WebAuthn stack, which in a box with no USB shows a "touch your
+# key" dialog that can never be satisfied. Grant it the same way the
+# chrome://extensions toggle does, by seeding the profile pref. Only while this
+# profile's Chrome is down — a running Chrome rewrites Preferences from memory
+# on exit and would drop the edit — and re-applied on every cold launch so a
+# profile that lost the grant heals itself.
+if [ -f "${SAND_WEBAUTHN_MARKER}" ] && [ -r "${SAND_WEBAUTHN_ID_FILE}" ] &&
+	! chrome_ready && command -v python3 >/dev/null 2>&1; then
+	SAND_INCOGNITO_SEED=(python3 -)
+	if [ "$(id -u)" -eq 0 ]; then
+		SAND_INCOGNITO_SEED=(runuser -u box -- python3 -)
+	fi
+	"${SAND_INCOGNITO_SEED[@]}" "${CHROME_PROFILE}/Default/Preferences" "$(cat "${SAND_WEBAUTHN_ID_FILE}")" <<'SAND_INCOGNITO_EOF' || true
+import json, os, sys
+
+prefs, extension_id = sys.argv[1], sys.argv[2]
+try:
+    with open(prefs, encoding="utf-8") as handle:
+        settings = json.load(handle)
+except (OSError, ValueError):
+    settings = {}
+entry = (
+    settings.setdefault("extensions", {})
+    .setdefault("settings", {})
+    .setdefault(extension_id, {})
+)
+if entry.get("incognito") is not True:
+    entry["incognito"] = True
+    os.makedirs(os.path.dirname(prefs), exist_ok=True)
+    with open(prefs, "w", encoding="utf-8") as handle:
+        json.dump(settings, handle, separators=(",", ":"))
+SAND_INCOGNITO_EOF
+fi
+
+if [ "${SAND_CHROME_PREPARE}" -eq 1 ]; then
+	chrome_ready || launch_chrome --no-startup-window
+	wait_for_chrome 0
+	exit
+fi
+
+launch_chrome "$@"
+wait_for_chrome 1

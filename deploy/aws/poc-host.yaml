@@ -1,0 +1,201 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Frostfire Phase 1 AWS POC: User-Hosted VM on EC2 Spot with Nested KVM and Full UserData Bootstrap'
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: c6i.xlarge
+    AllowedValues:
+      - c6i.xlarge
+      - c6a.xlarge
+      - c6i.2xlarge
+      - c6a.2xlarge
+      - c7i.xlarge
+      - c7a.xlarge
+    Description: 'EC2 instance type with Nitro nested KVM virtualization support.'
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: 'Name of an existing EC2 KeyPair to enable SSH access.'
+
+  AllowedCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: 'Allowed CIDR IP block for SSH (22), Window Router (1339), and noVNC (6080). Use your_ip/32 for security.'
+
+  VolumeSize:
+    Type: Number
+    Default: 50
+    MinValue: 30
+    MaxValue: 200
+    Description: 'Root EBS gp3 volume size in GB.'
+
+Resources:
+  PocSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Frostfire User VM POC - SSH, Window Router, and noVNC'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedCidr
+          Description: 'SSH terminal access'
+        - IpProtocol: tcp
+          FromPort: 1339
+          ToPort: 1339
+          CidrIp: !Ref AllowedCidr
+          Description: 'Frostfire Window Router reverse proxy'
+        - IpProtocol: tcp
+          FromPort: 6080
+          ToPort: 6080
+          CidrIp: !Ref AllowedCidr
+          Description: 'noVNC Websockify RFB GUI bridge'
+        - IpProtocol: tcp
+          FromPort: 6081
+          ToPort: 6081
+          CidrIp: !Ref AllowedCidr
+          Description: 'noVNC Secondary display RFB GUI bridge'
+      Tags:
+        - Key: Name
+          Value: frostfire-poc-sg
+
+  UserVmInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: '{{resolve:ssm:/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id}}'
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SecurityGroupIds:
+        - !Ref PocSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: !Ref VolumeSize
+            VolumeType: gp3
+            DeleteOnTermination: false
+      InstanceMarketOptions:
+        MarketType: spot
+        SpotOptions:
+          SpotInstanceType: persistent
+          InstanceInterruptionBehavior: stop
+      UserData:
+        Fn::Base64: !Sub |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec > >(tee -a /var/log/frostfire-bootstrap.log) 2>&1
+
+          echo "============================================================"
+          echo ">>> Bootstrapping Frostfire User VM Host via CloudFormation"
+          echo "============================================================"
+
+          # 1. Hardware KVM Permissions
+          if [ -e /dev/kvm ]; then
+            chmod 666 /dev/kvm
+            usermod -aG kvm ubuntu || true
+            echo "[+] KVM device ready."
+          else
+            echo "[-] Warning: /dev/kvm not found. Check nested virtualization."
+          fi
+
+          # 2. Kernel IP Forwarding for Guest TAP NAT
+          sysctl -w net.ipv4.ip_forward=1
+          echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-frostfire.conf
+
+          # 3. System Packages & Build Toolchains
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y \
+            build-essential \
+            curl \
+            wget \
+            git \
+            debootstrap \
+            qemu-utils \
+            e2fsprogs \
+            iptables \
+            iproute2 \
+            pkg-config \
+            libssl-dev \
+            protobuf-compiler \
+            libprotobuf-dev \
+            flex \
+            bison \
+            libelf-dev \
+            bc \
+            jq \
+            net-tools
+
+          # 4. Install Official Firecracker Hypervisor Release
+          FC_VER="v1.10.1"
+          ARCH="$(uname -m)"
+          echo ">>> Installing Firecracker ${!FC_VER}..."
+          curl -sSL "https://github.com/firecracker-microvm/firecracker/releases/download/${!FC_VER}/firecracker-${!FC_VER}-${!ARCH}.tgz" -o /tmp/firecracker.tgz
+          tar -xzf /tmp/firecracker.tgz -C /tmp/
+          mv "/tmp/release-${!FC_VER}-${!ARCH}/firecracker-${!FC_VER}-${!ARCH}" /usr/local/bin/firecracker
+          mv "/tmp/release-${!FC_VER}-${!ARCH}/jailer-${!FC_VER}-${!ARCH}" /usr/local/bin/jailer
+          chmod +x /usr/local/bin/firecracker /usr/local/bin/jailer
+          rm -rf /tmp/firecracker* "/tmp/release-${!FC_VER}-${!ARCH}"
+
+          # 5. Install Node.js 20+ LTS
+          if ! command -v node >/dev/null 2>&1; then
+            echo ">>> Installing Node.js 20+ LTS..."
+            curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+            apt-get install -y nodejs
+          fi
+
+          # 6. Install Rust Stable for ubuntu user
+          sudo -u ubuntu -i bash -c "
+            if ! command -v cargo >/dev/null 2>&1; then
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            fi
+          "
+
+          # 7. Configure Auto-Idle Shutdown Protection (<$5/mo budget)
+          cat << 'EOF' > /usr/local/bin/check-idle-shutdown.sh
+          #!/usr/bin/env bash
+          ACTIVE_CONNS=$(ss -nt '( sport = :22 or sport = :6080 )' | grep -v "State" | wc -l)
+          if [ "${!ACTIVE_CONNS}" -eq 0 ]; then
+              IDLE_MINS=$(cat /tmp/frostfire_idle_counter 2>/dev/null || echo 0)
+              IDLE_MINS=$((IDLE_MINS + 5))
+              echo "${!IDLE_MINS}" > /tmp/frostfire_idle_counter
+              if [ "${!IDLE_MINS}" -ge 20 ]; then
+                  echo "[frostfire-idle] Idle for 20+ minutes, stopping EC2 Spot instance..."
+                  shutdown -h now
+              fi
+          else
+              echo 0 > /tmp/frostfire_idle_counter
+          fi
+          EOF
+          chmod +x /usr/local/bin/check-idle-shutdown.sh
+          (crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/check-idle-shutdown.sh") | crontab -
+
+          echo "============================================================"
+          echo ">>> Frostfire User VM Host Bootstrap Complete!"
+          echo "============================================================"
+      Tags:
+        - Key: Name
+          Value: frostfire-user-vm-host
+        - Key: Project
+          Value: Frostfire
+
+Outputs:
+  InstanceId:
+    Description: 'EC2 Instance ID of the User VM Host'
+    Value: !Ref UserVmInstance
+
+  PublicIp:
+    Description: 'Public IPv4 address of the User VM Host'
+    Value: !GetAtt UserVmInstance.PublicIp
+
+  SshAccessCommand:
+    Description: 'Command to connect to the host via SSH'
+    Value: !Sub 'ssh -i "${KeyName}.pem" ubuntu@${UserVmInstance.PublicIp}'
+
+  NoVncUrl:
+    Description: 'Web-based remote desktop URL'
+    Value: !Sub 'http://${UserVmInstance.PublicIp}:6080/vnc.html'
+
+  WindowRouterUrl:
+    Description: 'Frostfire Window Router reverse proxy endpoint'
+    Value: !Sub 'http://${UserVmInstance.PublicIp}:1339'

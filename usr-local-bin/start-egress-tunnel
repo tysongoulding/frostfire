@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Config arrives via SAND_EGRESS_TUNNEL_* env from the backend (behind the
+# sand_box_egress_tunnel Statsig gate); the binary refuses to start without
+# the bearer.
+set -euo pipefail
+exec /usr/local/bin/sand-egress-tunnel server "$@"

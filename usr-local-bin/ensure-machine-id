@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Guarantee a valid /etc/machine-id (and a D-Bus machine-id that agrees) before
+# Chrome or any D-Bus session bus comes up. The debian base image ships an empty
+# /etc/machine-id; Chrome reads it directly for its device-token storage and logs
+# "/etc/machine-id contains 0 characters (32 were expected)" on every launch when
+# it is empty, and a D-Bus session bus binds the id at launch, so the bus Chrome
+# joins must see a valid one too. The box image ships /var/lib/dbus/machine-id but
+# no /etc/machine-id, so this writes the latter and points the former at it.
+#
+# The id is persisted on the durable chrome-profile volume
+# (/home/box/chrome-profile/machine-id, a PERSISTED_BOX_PATHS entry, see
+# brokered-sand-box.ts) and restored on each boot, so hibernate/wake and a
+# data-preserving image update keep the same device identity and Okta does not
+# re-challenge the box as a brand-new device. A reset (fresh box, no restore)
+# intentionally gets a new id, matching its throwaway semantics.
+set -u
+
+if [ "$(id -u)" -ne 0 ] && [ -z "${SAND_MACHINE_ID_ROOT:-}" ] \
+	&& command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+	exec sudo -n "$0" "$@"
+fi
+
+ROOT="${SAND_MACHINE_ID_ROOT:-}"
+etc_path="${ROOT}/etc/machine-id"
+dbus_path="${ROOT}/var/lib/dbus/machine-id"
+persisted_path="${ROOT}/home/box/chrome-profile/machine-id"
+
+read_machine_id() {
+	local path="${1:-}" id
+	[ -s "${path}" ] || return 0
+	id="$(tr -d '\n' <"${path}" 2>/dev/null)"
+	case "${id}" in
+	"" | *[!0-9a-f]*) return 0 ;;
+	esac
+	[ "${#id}" -eq 32 ] && printf '%s' "${id}"
+}
+
+etc_id="$(read_machine_id "${etc_path}")"
+persisted_id="$(read_machine_id "${persisted_path}")"
+
+if [ -n "${persisted_id}" ]; then
+	machine_id="${persisted_id}"
+elif [ -n "${etc_id}" ]; then
+	machine_id="${etc_id}"
+else
+	# A v4 UUID from the kernel is lowercase hex with dashes; stripping the dashes
+	# yields exactly the 32 hex chars the machine-id format wants.
+	machine_id="$(tr -dc 'a-f0-9' </proc/sys/kernel/random/uuid 2>/dev/null | head -c 32)"
+fi
+
+if [ "${#machine_id}" -ne 32 ]; then
+	exit 0
+fi
+
+# Security: persisted_path lives in /home/box/chrome-profile, a directory the
+# unprivileged box user owns and Chrome runs against, yet this guard runs as
+# ROOT on every desktop bringup. A compromised box-user process can therefore
+# replace persisted_path with a symlink. Writing or chowning that path directly
+# would make root follow the link and clobber/chown an arbitrary file. So write
+# and chown a private temp file we created ourselves (by its real path, never
+# the user-controlled destination), then atomically rename it into place: mv -T
+# replaces whatever sits at the destination (a symlink included) via rename(2),
+# which never follows the link. Root thus only ever writes through and chowns
+# the file it owns.
+if [ "${persisted_id}" != "${machine_id}" ]; then
+	persisted_dir="${persisted_path%/*}"
+	mkdir -p "${persisted_dir}" 2>/dev/null || true
+	if persisted_tmp="$(mktemp "${persisted_dir}/.machine-id.XXXXXX" 2>/dev/null)"; then
+		if printf '%s\n' "${machine_id}" >"${persisted_tmp}" 2>/dev/null; then
+			chmod 644 "${persisted_tmp}" 2>/dev/null || true
+			chown box:box "${persisted_tmp}" 2>/dev/null || true
+			mv -T "${persisted_tmp}" "${persisted_path}" 2>/dev/null \
+				|| rm -f "${persisted_tmp}" 2>/dev/null || true
+		else
+			rm -f "${persisted_tmp}" 2>/dev/null || true
+		fi
+	fi
+fi
+
+if [ "${etc_id}" != "${machine_id}" ]; then
+	mkdir -p "${etc_path%/*}" 2>/dev/null || true
+	printf '%s\n' "${machine_id}" >"${etc_path}" || true
+fi
+
+if [ "$(read_machine_id "${dbus_path}")" != "${machine_id}" ]; then
+	mkdir -p "${dbus_path%/*}" 2>/dev/null || true
+	ln -sf "${etc_path}" "${dbus_path}" || true
+fi
+
+exit 0

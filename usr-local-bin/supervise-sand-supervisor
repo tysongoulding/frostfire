@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# Restart loop for the in-box sand-supervisor. Liveness is the status file's
+# mtime (sand-supervisor.mjs writeStatus rewrites it every tick), so a wedged
+# event loop restarts like an exited one. On give-up this exits non-zero and
+# the entrypoint (start-sand-box.sh) ends the container so the backend's
+# reaped-box path replaces the pod.
+set -uo pipefail
+
+if [ "$#" -lt 3 ]; then
+	echo "usage: supervise-sand-supervisor.sh <status-file> <child-log> <launcher> [args...]" >&2
+	exit 64
+fi
+
+status_file="$1"
+child_log="$2"
+launcher="$3"
+shift 3
+
+child_pid=""
+delay_pid=""
+stopping=0
+restart_delay_s=1
+restart_count=0
+restart_cause="supervisor_exited"
+consecutive_quick_failures=0
+telemetry_log="${SAND_BOX_TELEMETRY_LOG:-/tmp/sand-box-telemetry.log}"
+# Status unwritten for this long = wedged (ticks are ~5s, SAND_SUPERVISOR_TICK_MS).
+stale_after_s="${SAND_SUPERVISOR_STALE_S:-180}"
+startup_grace_s="${SAND_SUPERVISOR_STARTUP_GRACE_S:-120}"
+max_quick_failures="${SAND_SUPERVISOR_MAX_QUICK_FAILURES:-8}"
+check_interval_s="${SAND_SUPERVISOR_CHECK_INTERVAL_S:-5}"
+
+emit_restart_event() {
+	local runtime_s="$1"
+	local child_status="$2"
+	local cause="$3"
+	printf '{"kind":"supervisor_restart","restartAttempt":%s,"runtimeS":%s,"cause":"%s","exitStatus":%s}\n' \
+		"${restart_count}" "${runtime_s}" "${cause}" "${child_status}" >>"${telemetry_log}"
+}
+
+stop_supervisor() {
+	stopping=1
+	if [ -n "${delay_pid}" ]; then
+		kill -TERM "${delay_pid}" 2>/dev/null || true
+	fi
+	if [ -n "${child_pid}" ]; then
+		# Signal the whole process group so a host mid-launch cannot outlive
+		# its supervisor.
+		kill -TERM -- "-${child_pid}" 2>/dev/null ||
+			kill -TERM "${child_pid}" 2>/dev/null ||
+			true
+	fi
+}
+trap stop_supervisor TERM INT
+
+status_mtime_s() {
+	stat -c %Y "${status_file}" 2>/dev/null || echo 0
+}
+
+stop_unhealthy_child() {
+	local reason="$1"
+	restart_cause="${reason}"
+	echo "[sand-supervisor-supervise] liveness failed (${reason}); restarting pid=${child_pid}" >&2
+	kill -TERM -- "-${child_pid}" 2>/dev/null ||
+		kill -TERM "${child_pid}" 2>/dev/null ||
+		true
+	for _ in $(seq 1 10); do
+		if ! kill -0 -- "-${child_pid}" 2>/dev/null; then
+			return
+		fi
+		sleep 0.5
+	done
+	kill -KILL -- "-${child_pid}" 2>/dev/null ||
+		kill -KILL "${child_pid}" 2>/dev/null ||
+		true
+}
+
+while [ "${stopping}" = "0" ]; do
+	started_at_s="$(date +%s)"
+	restart_count=$((restart_count + 1))
+	restart_cause="supervisor_exited"
+	echo "[sand-supervisor-supervise] launching attempt=${restart_count}"
+	# Append, never truncate: the previous incarnation's crash tail is the only
+	# in-box record of why it died.
+	setsid "${launcher}" "$@" >>"${child_log}" 2>&1 &
+	child_pid=$!
+	# The trap may have run between spawning and recording $!.
+	if [ "${stopping}" = "1" ]; then
+		stop_supervisor
+	fi
+
+	became_ready=0
+	while kill -0 "${child_pid}" 2>/dev/null; do
+		now_s="$(date +%s)"
+		mtime_s="$(status_mtime_s)"
+		if [ "${mtime_s}" -ge "${started_at_s}" ]; then
+			if [ "${became_ready}" = "0" ]; then
+				echo "[sand-supervisor-supervise] ready pid=${child_pid} attempt=${restart_count}"
+			fi
+			became_ready=1
+			if [ $((now_s - mtime_s)) -ge "${stale_after_s}" ]; then
+				stop_unhealthy_child "status_stale"
+			fi
+		elif [ "${became_ready}" = "0" ] &&
+			[ $((now_s - started_at_s)) -ge "${startup_grace_s}" ]; then
+			stop_unhealthy_child "startup_status_timeout"
+		fi
+
+		sleep "${check_interval_s}" &
+		delay_pid=$!
+		wait "${delay_pid}" 2>/dev/null || true
+		delay_pid=""
+		if [ "${stopping}" = "1" ]; then
+			break
+		fi
+	done
+
+	wait "${child_pid}" 2>/dev/null
+	child_status=$?
+	# Clear stragglers of the supervisor's own group. The host is NOT in it
+	# (launchHost spawns detached; the fresh supervisor re-adopts it).
+	kill -KILL -- "-${child_pid}" 2>/dev/null || true
+	child_pid=""
+	if [ "${stopping}" = "1" ]; then
+		echo "[sand-supervisor-supervise] stopped"
+		exit 0
+	fi
+
+	runtime_s=$(( $(date +%s) - started_at_s ))
+	if [ "${runtime_s}" -lt 0 ]; then
+		runtime_s=0
+	fi
+	emit_restart_event "${runtime_s}" "${child_status}" "${restart_cause}"
+	echo "[sand-supervisor-supervise] supervisor exited status=${child_status} runtime_s=${runtime_s} cause=${restart_cause} restart_in_s=${restart_delay_s}" >&2
+
+	if [ "${runtime_s}" -lt 60 ]; then
+		consecutive_quick_failures=$((consecutive_quick_failures + 1))
+	else
+		consecutive_quick_failures=0
+		restart_delay_s=1
+	fi
+	if [ "${consecutive_quick_failures}" -ge "${max_quick_failures}" ]; then
+		emit_restart_event "${runtime_s}" "${child_status}" "gave_up"
+		echo "[sand-supervisor-supervise] giving up after ${consecutive_quick_failures} consecutive quick failures; ending the box" >&2
+		exit 1
+	fi
+
+	sleep "${restart_delay_s}" &
+	delay_pid=$!
+	wait "${delay_pid}" 2>/dev/null || true
+	delay_pid=""
+	if [ "${restart_delay_s}" -lt 30 ]; then
+		restart_delay_s=$((restart_delay_s * 2))
+		if [ "${restart_delay_s}" -gt 30 ]; then
+			restart_delay_s=30
+		fi
+	fi
+done

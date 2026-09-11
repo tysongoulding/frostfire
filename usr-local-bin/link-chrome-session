@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Each forked monitor (DISPLAY :N, N>=2) runs its OWN Chrome process against its
+# OWN --user-data-dir, and that is unavoidable: a single Chrome process cannot
+# place windows across the per-monitor X servers, and a second Chrome launched on
+# an already-running profile's --user-data-dir is handed off to the first
+# instance and opens its window on THAT instance's display (Chrome's
+# single-instance behaviour). So keeping N concurrent monitor windows means N
+# separate Chrome processes, each with its own SingletonLock and its own Local
+# Storage leveldb. Giving each its own *whole* profile, though, gave each monitor
+# its own cookies — so a login on one monitor was a logout on the next (the bug
+# this fixes).
+#
+# The per-display profiles therefore keep their own lock + leveldb but SHARE the
+# login session: this links the session-bearing SQLite files (cookies + saved
+# credentials) in a fork's profile at the ONE shared store that lives in the
+# primary profile's Default — the single directory backed by the per-agent chrome
+# volume (docker-sand-box.ts / SAND_BOX_PERSISTED_PATHS), so logins also survive
+# box recreation. A login on ANY monitor writes the shared store and every other
+# monitor's freshly-launched Chrome reads it: one box, one session.
+#
+# Why this is safe across concurrent processes: cookies and login data are flat
+# SQLite databases in rollback-journal mode. SQLite resolves the symlink to its
+# real target, so every Chrome locks the one target inode and co-locates its
+# rollback journal beside it — exactly as if all processes opened the canonical
+# path. Local Storage / IndexedDB leveldb is deliberately NOT shared: leveldb
+# takes an exclusive per-process lock, so it must stay per-display.
+set -u
+
+profile_dir="${SAND_CHROME_PROFILE_DIR:-}"
+session_dir="${SAND_CHROME_SESSION_DIR:-/home/box/chrome-profile/Default}"
+[ -n "${profile_dir}" ] || exit 0
+
+default_dir="${profile_dir}/Default"
+
+# Create the fork's Default and the shared store, and (as root) hand both to the
+# box user Chrome runs as: Chrome creates the shared cookie file lazily through
+# the symlink, so its parent must exist and be box-writable even when a fork is
+# the first to open the browser (the primary's Chrome may not have run yet). Skip
+# a path that is itself a symlink so a root-run chown can never be redirected
+# through a link a box-user process planted (matching ensure-machine-id's care).
+ensure_box_dir() {
+	local dir="${1}"
+	mkdir -p "${dir}" 2>/dev/null || true
+	if [ "$(id -u)" -eq 0 ] && [ -d "${dir}" ] && [ ! -L "${dir}" ]; then
+		chown box:box "${dir}" 2>/dev/null || true
+	fi
+}
+ensure_box_dir "${session_dir}"
+
+# The fork's own Default MUST be a real directory, never a symlink. If it were a
+# symlink into the shared store (this runs as root, and a box-user process could
+# plant one), the per-file rm/relink below would resolve THROUGH it and delete
+# the shared store's real cookie/login files — wiping every monitor's login, the
+# exact opposite of this script's job. Replace a symlinked Default with a real
+# dir, removing ONLY the link itself (rm of a symlink never follows it).
+if [ -L "${default_dir}" ]; then
+	rm -f "${default_dir}" 2>/dev/null || true
+fi
+ensure_box_dir "${default_dir}"
+
+# Cookies = the login session; Login Data / Login Data For Account = saved
+# credentials. Each is a flat rollback-journal SQLite DB — the files that make
+# "logged in" portable across monitors. (Their -journal siblings are transient
+# and land beside the resolved target, so they are not linked here.)
+session_files=(Cookies "Login Data" "Login Data For Account")
+for name in "${session_files[@]}"; do
+	target="${session_dir}/${name}"
+	link="${default_dir}/${name}"
+	# Already the right symlink (the steady state after the first launch): nothing
+	# to do, and crucially do not disturb a file a running Chrome may hold open.
+	if [ -L "${link}" ] && [ "$(readlink "${link}" 2>/dev/null)" = "${target}" ]; then
+		continue
+	fi
+	# Otherwise drop whatever is at the fork's own path — a stale link (rm of a
+	# symlink removes the link, never its target) or a pre-fix per-display file
+	# whose isolated, logged-out cookies are intentionally discarded — and point
+	# at the shared store. rm -f (never -rf): with Default guaranteed a real dir
+	# above, this only ever touches the fork's own file, and it never recurses
+	# into a directory a box-user process may have planted here.
+	rm -f "${link}" 2>/dev/null || true
+	ln -s "${target}" "${link}" 2>/dev/null || true
+done
+
+exit 0

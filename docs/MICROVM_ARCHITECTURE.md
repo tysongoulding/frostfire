@@ -1,6 +1,6 @@
 # Frostfire Cloud Agent MicroVM Architecture & Complete Replication Blueprint
 
-This document provides an exhaustive reverse-engineered architectural specification of the autonomous cloud agent microVM environment (`box@cursor:/workspace`, internally codenamed `sand` / `@anysphere/exec-daemon-runtime`). It details the hypervisor, kernel flags, display multiplexing, multi-screen agent router, inverted WebAuthn proxy, crash-loop prevention mechanics, and turnkey scripts to reproduce this system.
+This document provides an exhaustive reverse-engineered architectural specification of the autonomous cloud agent microVM environment (`box@cursor:/workspace`, internally codenamed `frostfire` / `@anysphere/exec-daemon-runtime`). It details the hypervisor, kernel flags, display multiplexing, multi-screen agent router, inverted WebAuthn proxy, crash-loop prevention mechanics, and turnkey scripts to reproduce this system.
 
 ---
 
@@ -40,9 +40,9 @@ console=ttyS0 root=/dev/vda random.trust_cpu=on ip=172.30.0.2::172.30.0.1:255.25
 ```
 [PID 1: Container / MicroVM Entrypoint]
   │
-  ├─► [PID 53: /usr/local/bin/sand-exit-watch] (Python subreaper, crash logging, zombie reaping)
+  ├─► [PID 53: /usr/local/bin/frostfire-exit-watch] (Python subreaper, crash logging, zombie reaping)
   │     │
-  │     ├─► [PID 167: sand-window-router.mjs] (HTTP/WS router on port 1339)
+  │     ├─► [PID 167: frostfire-window-router.mjs] (HTTP/WS router on port 1339)
   │     ├─► [PID 139: websockify :6081] (Token router for multi-display VNC)
   │     ├─► [PID 733: websockify :6080] (Default direct proxy to :1)
   │     │
@@ -70,14 +70,14 @@ console=ttyS0 root=/dev/vda random.trust_cpu=on ip=172.30.0.2::172.30.0.1:255.25
 
 ## 3. Multi-Window Router & Per-Screen Agent Multiplexing
 
-The system routes traffic using `sand-window-router.mjs`:
+The system routes traffic using `frostfire-window-router.mjs`:
 * **HTTP/WS Ingress**: Port `1339`.
 * **Primary Agent Daemon**: Port `1337`.
 * **Per-Screen Agent Daemons**: Ports `14000 + DISPLAY_NUM` (e.g., 14004, 14006, 14007).
 * **Per-Screen PTY WebSockets**: Ports `13600 + DISPLAY_NUM` (e.g., 13604, 13606, 13607).
 * **Routing Headers**:
-  * `x-sand-display`: Requested display integer (e.g., `4`, `7`).
-  * `x-sand-window-owner`: Security token matching `/tmp/sand-window-tokens.d/<display>`.
+  * `x-frostfire-display`: Requested display integer (e.g., `4`, `7`).
+  * `x-frostfire-window-owner`: Security token matching `/tmp/frostfire-window-tokens.d/<display>`.
 * **Security**: Verified via constant-time token comparison (`crypto.timingSafeEqual`).
 
 Each agent instance runs Anthropic Computer Use and terminal tools:
@@ -114,12 +114,12 @@ Chrome single-instance behavior prevents multiple displays from attaching to the
 
 To allow headless Chrome inside the cloud microVM to authenticate with hardware keys (YubiKey, Apple Touch ID, Windows Hello) without passing raw keys into the VM:
 
-1. **Chrome Managed Policy**: Force-installs extension ID `pkjakndclmokfbgfnpgjieoebnbghhgb` via `/etc/opt/chrome/policies/managed/sand-webauthn.json` using `ExtensionSettings`.
+1. **Chrome Managed Policy**: Force-installs extension ID `pkjakndclmokfbgfnpgjieoebnbghhgb` via `/etc/opt/chrome/policies/managed/frostfire-webauthn.json` using `ExtensionSettings`.
 2. **Preference Seeding**: Python script modifies `Preferences` while Chrome is down to grant the extension incognito access.
 3. **Intercept**: The extension attaches via `chrome.webAuthenticationProxy`.
 4. **Native Messaging Forwarding**:
    * Page triggers `navigator.credentials.get(...)` or `create(...)`.
-   * Extension intercepts the ceremony and invokes `chrome.runtime.sendNativeMessage("co.anysphere.sand.webauthn_proxy", ...)`.
+   * Extension intercepts the ceremony and invokes `chrome.runtime.sendNativeMessage("co.frostfire.webauthn_proxy", ...)`.
    * Native host routes the ceremony over the reverse gRPC tunnel to the user's local machine (`1340`).
    * Local laptop authenticates with YubiKey / TouchID / Windows Hello and sends back `credentialJson`.
    * Extension calls `chrome.webAuthenticationProxy.completeGetRequest(...)`.
@@ -165,10 +165,10 @@ All 11 Key Architectural Findings have been integrated into Frostfire's native R
 | **2** | **Cgroups v2 Dual-Slice Prioritization** | `deploy/microvm/bin/box-cgroups.sh` | `crates/frostfire-daemon/src/service.rs`: Auto-places daemon and compiler workloads into `/sys/fs/cgroup/agent/cgroup.procs` on Linux startup while reserving `cpu.weight=800` for interactive X11 / window manager stack. | Prevents agent compilation spikes from freezing the interactive desktop stream. |
 | **3** | **Developer Credential Persistence Across Hibernations** | `deploy/microvm/bin/persist-cli-auth` | `crates/frostfire-security/src/credential_persistence.rs`: `CredentialPersistenceStore` mirrors `.ssh`, `.gnupg`, `.config/gh`, `.aws`, `.npmrc`, `.gitconfig`, prunes caches, validates SHA-256 signatures, and restores strict 0700/0600 POSIX permissions. | Unit tests in `frostfire-security` verify snapshot creation, integrity checks, and restoration. |
 | **4** | **Native Code Intelligence: Rust Semantic Chunker & Process Inspector** | Zero external runtime dependencies | `crates/frostfire-exec/src/semantic_chunker.rs`: Syntax-aware and token-budget-bounded chunking for LLM context windows.<br>`crates/frostfire-exec/src/process_inspector.rs`: Direct Win32 `Toolhelp32` and Linux `/proc` inspector with zero shell forks. | Unit tests in `frostfire-exec` verify token budget limits, code boundary retention, and process table queries. |
-| **5** | **Inverted WebAuthn Passkey Hardware Key Bridge Assets & Proto Contract** | `deploy/microvm/bin/sand-webauthn-proxy-host`<br>`deploy/microvm/bin/webauthn-proxy-host.mjs`<br>Chrome managed policies & native messaging manifest | `crates/frostfire-proto/proto/tunnel.proto`: `WebAuthnCeremonyRequest` & `WebAuthnCeremonyResponse`.<br>`crates/frostfire-security/src/broker.rs`: `sign_webauthn_ceremony()` completes authentication ceremonies locally without leaking private keys. | Verified via unit tests in `frostfire-security` and `frostfire-proto`. |
-| **6** | **Anti-Bot Fingerprint Governor & Stealth CDP** | `deploy/microvm/bin/sand-fingerprint-profiles.mjs`<br>`deploy/microvm/bin/box-contract.generated.mjs`<br>`deploy/microvm/bin/cdp-cookies.mjs`<br>`deploy/microvm/bin/sand-ua-governor.mjs` | `crates/frostfire-cli/src/browser.rs`: Generates evasive stealth scripts overriding `navigator.webdriver`, `chrome.runtime`, WebGL vendor/renderer strings, and CDP cookie synchronization. | Unit tests in `frostfire-cli` verify profile spoofing and evasive CDP payload generation. |
-| **7** | **Dual-Tier Session Sync: Cold Disk SQLite + Live CDP Sync** | `deploy/microvm/bin/sand-session-sync.mjs` | Polling CDP ports `9222 + DISPLAY_NUM` every 1500ms, syncing active cookies and `localStorage` to secondary displays with zero automation detection. | Seamlessly shares authenticated sessions across concurrent agent screens. |
-| **8** | **Self-Updating Supervisor & Protected Deny-List** | `deploy/microvm/bin/sand-supervisor.mjs` | `crates/frostfire-daemon/src/config.rs`: `BOX_SCRIPTS_DENY` enforcing immutability for critical security daemons and preventing untrusted agent self-mutation. | Unit test `test_box_scripts_deny_rejection` in `frostfire-daemon`. |
+| **5** | **Inverted WebAuthn Passkey Hardware Key Bridge Assets & Proto Contract** | `deploy/microvm/bin/frostfire-webauthn-proxy-host`<br>`deploy/microvm/bin/webauthn-proxy-host.mjs`<br>Chrome managed policies & native messaging manifest | `crates/frostfire-proto/proto/tunnel.proto`: `WebAuthnCeremonyRequest` & `WebAuthnCeremonyResponse`.<br>`crates/frostfire-security/src/broker.rs`: `sign_webauthn_ceremony()` completes authentication ceremonies locally without leaking private keys. | Verified via unit tests in `frostfire-security` and `frostfire-proto`. |
+| **6** | **Anti-Bot Fingerprint Governor & Stealth CDP** | `deploy/microvm/bin/frostfire-fingerprint-profiles.mjs`<br>`deploy/microvm/bin/box-contract.generated.mjs`<br>`deploy/microvm/bin/cdp-cookies.mjs`<br>`deploy/microvm/bin/frostfire-ua-governor.mjs` | `crates/frostfire-cli/src/browser.rs`: Generates evasive stealth scripts overriding `navigator.webdriver`, `chrome.runtime`, WebGL vendor/renderer strings, and CDP cookie synchronization. | Unit tests in `frostfire-cli` verify profile spoofing and evasive CDP payload generation. |
+| **7** | **Dual-Tier Session Sync: Cold Disk SQLite + Live CDP Sync** | `deploy/microvm/bin/frostfire-session-sync.mjs` | Polling CDP ports `9222 + DISPLAY_NUM` every 1500ms, syncing active cookies and `localStorage` to secondary displays with zero automation detection. | Seamlessly shares authenticated sessions across concurrent agent screens. |
+| **8** | **Self-Updating Supervisor & Protected Deny-List** | `deploy/microvm/bin/frostfire-supervisor.mjs` | `crates/frostfire-daemon/src/config.rs`: `BOX_SCRIPTS_DENY` enforcing immutability for critical security daemons and preventing untrusted agent self-mutation. | Unit test `test_box_scripts_deny_rejection` in `frostfire-daemon`. |
 | **9** | **Inverted WebAuthn Tunnel Handler & Mock Gateway Verification** | Tunnel routing infrastructure | `crates/frostfire-daemon/src/orchestrator.rs`: `handle_webauthn_request()` dispatches ceremonies through local credential broker and sends signed frames over gRPC stream.<br>`crates/frostfire-tunnel/src/mock_server.rs`: In-process bidirectional frame verification. | Full roundtrip integration test in `crates/frostfire-tunnel/tests/tunnel_test.rs` and daemon unit test in `orchestrator.rs`. |
 | **10** | **Remote Storage FUSE Mount & Worktree Backing** | `deploy/microvm/bin/cursor-agent-store-fuse`<br>`deploy/microvm/bin/cursor-agent-store-fuse.version` | `crates/frostfire-exec/src/worktree.rs`: `verify_mount_backing()` and `link_agent_store()` validating remote bucket mount points, sentinel markers, and worktree backing. | Unit tests in `frostfire-exec` verify mount detection, sentinel validation, and invalid ID rejection. |
 | **11** | **Server-Side Canvas/DAG Renderer & Real-Time Visualization** | Zero client-side dependencies | `services/swarm-orchestrator/src/canvas_renderer.rs`: `DagGraph` converts sprint state machine and Blackboard milestones into interactive vector SVG (`render_svg`), HTML5 Canvas (`render_canvas_js`), and standalone HTML pages. | Unit test `test_canvas_renderer_svg_and_canvas_js` in `frostfire-orchestrator`. |
