@@ -3652,71 +3652,52 @@ async fn query_bedrock_or_gemini(
     let cli_res = tokio::task::spawn_blocking({
         let sys = system_prompt.clone();
         let b_msgs = bedrock_messages.clone();
-        let primary_model = if is_slot_1 {
-            "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
-        } else {
-            "amazon.nova-lite-v1:0"
-        };
+        let custom_model = std::env::var("BEDROCK_MODEL").ok();
         move || {
             let sys_json = serde_json::json!([{"text": sys}]).to_string();
             let msg_json = serde_json::to_string(&b_msgs).unwrap_or_else(|_| "[]".to_string());
-            let mut cmd = std::process::Command::new("aws");
-            #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+            let mut candidates: Vec<String> = Vec::new();
+            if let Some(cm) = custom_model {
+                candidates.push(cm);
             }
-            cmd.args([
-                "bedrock-runtime",
-                "converse",
-                "--model-id",
-                primary_model,
-                "--region",
-                "us-west-2",
-                "--system",
-                &sys_json,
-                "--messages",
-                &msg_json,
-                "--output",
-                "json",
-            ]);
-            let output = cmd.output().ok()?;
-            if output.status.success() {
-                let json: serde_json::Value = serde_json::from_slice(&output.stdout).ok()?;
-                let text = json.pointer("/output/message/content/0/text")?.as_str()?;
-                Some(parse_action_response(text))
-            } else {
-                // If specific Claude Bedrock model is unavailable/unsubscribed, gracefully fallback to Nova Lite with Claude system prompt
-                if is_slot_1 {
-                    let mut fb_cmd = std::process::Command::new("aws");
-                    #[cfg(windows)]
-                    {
-                        use std::os::windows::process::CommandExt;
-                        fb_cmd.creation_flags(0x08000000);
-                    }
-                    fb_cmd.args([
-                        "bedrock-runtime",
-                        "converse",
-                        "--model-id",
-                        "amazon.nova-lite-v1:0",
-                        "--region",
-                        "us-west-2",
-                        "--system",
-                        &sys_json,
-                        "--messages",
-                        &msg_json,
-                        "--output",
-                        "json",
-                    ]);
-                    let fb_output = fb_cmd.output().ok()?;
-                    if fb_output.status.success() {
-                        let json: serde_json::Value = serde_json::from_slice(&fb_output.stdout).ok()?;
-                        let text = json.pointer("/output/message/content/0/text")?.as_str()?;
-                        return Some(parse_action_response(text));
+            candidates.push("us.meta.llama3-3-70b-instruct-v1:0".to_string());
+            candidates.push("us.deepseek.r1-v1:0".to_string());
+            candidates.push("us.amazon.nova-pro-v1:0".to_string());
+            candidates.push("amazon.nova-lite-v1:0".to_string());
+
+            for model_id in &candidates {
+                let mut cmd = std::process::Command::new("aws");
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+                }
+                cmd.args([
+                    "bedrock-runtime",
+                    "converse",
+                    "--model-id",
+                    model_id,
+                    "--region",
+                    "us-west-2",
+                    "--system",
+                    &sys_json,
+                    "--messages",
+                    &msg_json,
+                    "--output",
+                    "json",
+                ]);
+                if let Ok(output) = cmd.output() {
+                    if output.status.success() {
+                        if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
+                            if let Some(text) = json.pointer("/output/message/content/0/text").and_then(|v| v.as_str()) {
+                                return Some(parse_action_response(text));
+                            }
+                        }
                     }
                 }
-                None
             }
+            None
         }
     })
     .await
