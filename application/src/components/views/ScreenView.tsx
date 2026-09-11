@@ -88,10 +88,8 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
       await fetch(execUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ display: displayNumber, command: cmd, cwd: '/workspace', background: true }),
+        body: JSON.stringify({ display: displayNumber, command: cmd, cwd: '/home/ubuntu', background: true }),
       });
-      // Trigger iframe reload after 350ms so window is instantly visible
-      setTimeout(() => setStreamEpoch((e) => e + 1), 350);
       return;
     } catch {}
 
@@ -104,7 +102,6 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
         vmHost,
         execPort,
       });
-      setTimeout(() => setStreamEpoch((e) => e + 1), 350);
       return;
     } catch {}
 
@@ -135,10 +132,10 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
   return (
     <div className="flex-1 flex flex-col h-full w-full bg-black relative overflow-hidden select-none">
       {/* Top Left Exit Button to return to Chat */}
-      <div className="absolute top-4 left-4 z-30">
+      <div className="absolute top-4 left-4 z-30 pointer-events-auto">
         <button
           onClick={onSwitchToChat}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700/80 shadow-lg backdrop-blur-sm text-xs font-medium transition-all cursor-pointer group"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700/80 shadow-lg backdrop-blur-md text-xs font-medium transition-all cursor-pointer group"
           title="Exit to Chat"
         >
           <ArrowLeft className="w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-colors" />
@@ -163,12 +160,8 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
 
       {/* Bottom Buttons Bar / Dock */}
       <div className="h-14 bg-zinc-950/95 border-t border-zinc-800 px-3 sm:px-5 flex items-center justify-between relative shrink-0 z-20">
-        {/* Left balance badge with active VM host and port */}
-        <div className="hidden sm:flex items-center gap-1.5 shrink-0">
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">
-            {vmHost}:{agentPort}
-          </span>
-        </div>
+        {/* Left balance spacer (IP address removed) */}
+        <div className="hidden sm:block shrink-0 w-24" />
 
         {/* Center: Center-aligned Dock Controls */}
         <div className="flex items-center justify-center gap-1.5 sm:gap-2 flex-1 max-w-3xl mx-auto min-w-0">
@@ -220,28 +213,6 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
               <ArrowUp className="w-3.5 h-3.5" />
             </button>
           </form>
-
-          {/* Return to Chat */}
-          <button
-            onClick={onSwitchToChat}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-300 hover:text-white transition-colors cursor-pointer shrink-0"
-            title="Switch back to Chat view"
-          >
-            <MessageSquare className="w-3.5 h-3.5 text-theme-accent-primary shrink-0" />
-            <span className="hidden sm:inline">Chat</span>
-          </button>
-        </div>
-
-        {/* Right: Reconnect Stream Button */}
-        <div className="flex items-center justify-end gap-1.5 shrink-0 w-24">
-          <button
-            onClick={() => setStreamEpoch((e) => e + 1)}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer"
-            title="Reconnect / Refresh Screen Stream"
-          >
-            <RotateCw className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-            <span className="hidden sm:inline">Reconnect</span>
-          </button>
         </div>
       </div>
     </div>

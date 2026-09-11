@@ -16,12 +16,15 @@ import { DEFAULT_EC2_HOST } from './lib/vnc';
 
 function sessionToEntity(s: AgentSessionInfo): AgentEntity {
   const sid = s.id || s.agent_id || 'agt_default';
+  const isSlot1 = s.display_number === 1;
+  const defaultName = isSlot1 ? 'Claude 3.7 Sonnet' : (s.name || `Agent Slot ${s.display_number}`);
+  const defaultRole = isSlot1 ? 'Screen Capture & Computer Use' : (s.role || '');
   const hasCustomRole = Boolean(s.role && !s.role.toLowerCase().includes('display'));
   return {
     id: sid,
-    name: s.name || `Agent Slot ${s.display_number}`,
-    role: hasCustomRole ? s.role! : '',
-    description: s.description || '',
+    name: s.name && !s.name.includes('Agent Slot') ? s.name : defaultName,
+    role: hasCustomRole ? s.role! : defaultRole,
+    description: s.description || (isSlot1 ? 'Autonomous cloud computer agent powered by Claude 3.7 Sonnet with screen capture capability.' : ''),
     notifications: true,
     displayNumber: s.display_number,
     vncPort: s.vnc_port,
@@ -32,14 +35,17 @@ function sessionToEntity(s: AgentSessionInfo): AgentEntity {
 
 function sessionToSidebarItem(s: AgentSessionInfo): SidebarItem {
   const sid = s.id || s.agent_id || 'agt_default';
+  const isSlot1 = s.display_number === 1;
+  const title = isSlot1 ? 'Claude 3.7 Sonnet' : (s.name || `Agent Slot ${s.display_number}`);
   const hasCustomRole = Boolean(s.role && !s.role.toLowerCase().includes('display'));
+  const roleTag = isSlot1 ? 'Screen Capture' : (hasCustomRole ? s.role : undefined);
   return {
     id: sid,
-    title: s.name || `Agent Slot ${s.display_number}`,
-    roleTag: hasCustomRole ? s.role : undefined,
-    preview: '',
+    title,
+    roleTag,
+    preview: isSlot1 ? 'Claude 3.7 Sonnet (Display :1)' : '',
     timestamp: 'Live',
-    accentClass: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
+    accentClass: isSlot1 ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
     isTeam: false,
     isStarred: false,
     isPinned: false,
@@ -125,10 +131,13 @@ const MainApp: React.FC = () => {
         const fallbackSession: AgentSessionInfo = {
           id: fallbackId,
           agent_id: fallbackId,
+          name: 'Claude 3.7 Sonnet',
+          role: 'Screen Capture & Computer Use',
+          description: 'Autonomous cloud computer agent powered by Claude 3.7 Sonnet with screen capture capability.',
           display_number: 1,
           display_slot: 1,
           vnc_port: 6080,
-          rfb_port: 5901,
+          rfb_port: 5900,
           cdp_port: 9223,
           vm_host: currentUser?.vmHost || DEFAULT_EC2_HOST,
           status: 'ready',
@@ -565,7 +574,7 @@ const MainApp: React.FC = () => {
     const targetAgent = agents[selectedAgentId];
     const displayNumber = targetAgent?.displayNumber ?? 1;
     const vmHost = targetAgent?.vmHost || currentUser.vmHost || DEFAULT_EC2_HOST;
-    const execPort = currentUser.execPort || 3000;
+    const execPort = currentUser.execPort || 1339;
 
     try {
       let res: any = null;

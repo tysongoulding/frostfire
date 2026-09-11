@@ -2421,7 +2421,7 @@ pub async fn create_agent_session(
     let vm_host = std::env::var("EC2_AGENT_HOST")
         .ok()
         .filter(|h| !h.trim().is_empty())
-        .or_else(|| Some("44.242.94.86".to_string()));
+        .or_else(|| Some("35.89.125.63".to_string()));
 
     let team_id = if is_team.unwrap_or(false) {
         Some(format!("team_{}", uuid::Uuid::new_v4().simple()))
@@ -2642,7 +2642,7 @@ pub async fn execute_remote_cloud_command(
     let host_raw = vm_host
         .filter(|h| !h.trim().is_empty())
         .or_else(|| std::env::var("EC2_AGENT_HOST").ok())
-        .unwrap_or_else(|| "4hkbgj6zkmfm674e3nxlpagshq0moaoy.lambda-url.us-west-2.on.aws".to_string());
+        .unwrap_or_else(|| "35.89.125.63".to_string());
 
     let is_lambda = host_raw.contains("lambda-url") || host_raw.starts_with("https://");
     let url = if is_lambda {
@@ -2656,7 +2656,7 @@ pub async fn execute_remote_cloud_command(
             std::env::var("EC2_EXEC_PORT")
                 .ok()
                 .and_then(|p| p.parse().ok())
-                .unwrap_or(3000)
+                .unwrap_or(1339)
         });
         let clean_host = host_raw
             .trim_start_matches("http://")
@@ -2842,12 +2842,50 @@ fn resolve_gemini_key() -> Option<String> {
     None
 }
 
+fn resolve_anthropic_key() -> Option<String> {
+    if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
+        let clean = key.trim().replace(['\r', '\n'], "");
+        if !clean.is_empty() {
+            return Some(clean);
+        }
+    }
+    for p in [".env", "../.env", "../../.env"] {
+        if let Ok(content) = std::fs::read_to_string(p) {
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if let Some(rest) = trimmed.strip_prefix("ANTHROPIC_API_KEY=") {
+                    let clean = rest
+                        .trim()
+                        .trim_matches('"')
+                        .trim_matches('\'')
+                        .replace(['\r', '\n'], "");
+                    if !clean.is_empty() {
+                        return Some(clean);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 fn infer_agent_tool_calls(prompt: &str, display_number: u32) -> Vec<String> {
     let p = prompt.to_lowercase();
     let mut tools = Vec::new();
+    let is_screen_capture = display_number == 1;
     let is_browser = matches!(display_number, 1 | 4 | 7);
     let is_dev = matches!(display_number, 2 | 5 | 8);
     let is_qa = matches!(display_number, 3 | 6 | 9);
+
+    if p.contains("screen")
+        || p.contains("screenshot")
+        || p.contains("capture")
+        || p.contains("picture")
+        || is_screen_capture
+    {
+        tools.push("screen_capture".to_string());
+        tools.push("frame_buffer_inspect".to_string());
+    }
 
     if p.contains("browser")
         || p.contains("chrome")
@@ -2946,7 +2984,7 @@ async fn execute_on_remote_pc(
         .filter(|h| !h.trim().is_empty())
         .map(|h| h.trim().to_string())
         .unwrap_or_else(|| {
-            std::env::var("EC2_AGENT_HOST").unwrap_or_else(|_| "4hkbgj6zkmfm674e3nxlpagshq0moaoy.lambda-url.us-west-2.on.aws".to_string())
+            std::env::var("EC2_AGENT_HOST").unwrap_or_else(|_| "35.89.125.63".to_string())
         });
 
     let is_lambda = host_raw.contains("lambda-url") || host_raw.starts_with("https://");
@@ -2957,7 +2995,7 @@ async fn execute_on_remote_pc(
             .trim_end_matches('/');
         format!("https://{}/api/exec", clean_host)
     } else {
-        let port = exec_port.unwrap_or(3000);
+        let port = exec_port.unwrap_or(1339);
         let clean_host = host_raw
             .trim_start_matches("http://")
             .trim_end_matches('/');
@@ -3186,6 +3224,24 @@ fn fallback_command_from_prompt(
                 || p.contains("navigate")
                 || p.contains("goto")
                 || p.contains("launch")));
+
+    // Screen capture / screenshot
+    if p.contains("screenshot")
+        || p.contains("screen capture")
+        || p.contains("capture screen")
+        || p.contains("take a screenshot")
+        || p.contains("take screenshot")
+        || p.contains("take a picture of the screen")
+        || p.contains("take picture of screen")
+        || p.contains("grab screen")
+        || p.contains("capture the screen")
+    {
+        return Some((
+            "scrot -o /tmp/screen.png".to_string(),
+            format!("Captured screen on Display :{} to /tmp/screen.png.", display_number),
+            "screen_capture".to_string(),
+        ));
+    }
 
     if p.contains("chrome")
         || p.contains("chome")
@@ -3430,34 +3486,79 @@ async fn query_bedrock_or_gemini(
 
     let skills_catalog = load_skills_catalog();
 
+    let is_slot_1 = display_number == 1;
+    let agent_name = if is_slot_1 {
+        "Claude 3.7 Sonnet"
+    } else {
+        "Gemini 3.8 Flash"
+    };
+
     let system_prompt = format!(
-        "You are Gemini 3.8 Flash, an autonomous cloud computer agent with direct execution control over the machine on Display :{} for user {}.\n\
-        You have direct access to the desktop GUI, terminal, browser, filesystem, and the managed skills library at `/home/ubuntu/.agent/skills/`.\n\
-        Whenever the user asks you to perform an action (open Chrome, browse to a site, open terminal, run commands, create/modify/delete files, press keys, execute skills, etc.), DO NOT describe steps or give instructions. You MUST execute the real Linux command.\n\n\
+        "You are {}, an autonomous cloud computer agent with direct execution control over the machine on Display :{} for user {}.\n\
+        You have direct access to the desktop GUI, terminal, browser, filesystem, screen capture capabilities (scrot), and the managed skills library at `/home/ubuntu/.agent/skills/`.\n\
+        Whenever the user asks you to perform an action (open Chrome, browse to a site, open terminal, capture screen / screenshot, run commands, create/modify/delete files, press keys, execute skills, etc.), DO NOT describe steps or give instructions. You MUST execute the real Linux command.\n\n\
         Available tools and launchers:
         1. Browser: /usr/local/bin/chrome-launcher '<url>'
         2. Terminal: /usr/local/bin/terminal-launcher
         3. Filesystem Manager: /usr/local/bin/files-launcher
-        4. Running/typing into Terminal: /usr/local/bin/terminal-launcher && sleep 0.4 && xdotool type --delay 12 '<command>' && sleep 0.2 && xdotool key Return
-        5. GUI interaction: xdotool key <Key> (e.g., Return, Tab, BackSpace, Escape, ctrl+c), or xdotool type '<text>'
-        6. Files & Shell: Any standard Linux bash command (e.g. echo 'text' > file.txt, cat file.txt, rm file.txt, ls -la, python3 script.py, df -h, curl ...)
-        7. Messaging & Chat: When sending a message in Google Messages or chat apps, click the input area, type the text, and hit Return: xdotool mousemove 500 545 click 1 && sleep 0.2 && xdotool type --delay 12 '<text>' && sleep 0.2 && xdotool key Return
-        8. IMPORTANT: Never output `&;` (invalid syntax). Always chain sequential commands using `&&` or `;`.\n\n\
+        4. Screen capture / screenshot: scrot -o /tmp/screen.png
+        5. Running/typing into Terminal: /usr/local/bin/terminal-launcher && sleep 0.4 && xdotool type --delay 12 '<command>' && sleep 0.2 && xdotool key Return
+        6. GUI interaction: xdotool key <Key> (e.g., Return, Tab, BackSpace, Escape, ctrl+c), or xdotool type '<text>'
+        7. Files & Shell: Any standard Linux bash command (e.g. echo 'text' > file.txt, cat file.txt, rm file.txt, ls -la, python3 script.py, df -h, curl ...)
+        8. Messaging & Chat: When sending a message in Google Messages or chat apps, click the input area, type the text, and hit Return: xdotool mousemove 500 545 click 1 && sleep 0.2 && xdotool type --delay 12 '<text>' && sleep 0.2 && xdotool key Return
+        9. IMPORTANT: Never output `&;` (invalid syntax). Always chain sequential commands using `&&` or `;`.\n\n\
         Installed Managed Bot Skills (on-machine at `/home/ubuntu/.agent/skills/<skill>/SKILL.md`):
         {}\n\
         Respond ONLY with valid JSON in this exact structure:\n\
         {{\n\
           \"command\": \"<the exact bash or xdotool command to execute on Display :{}, or empty string if answering a conversational question>\",\n\
           \"reply\": \"<short friendly confirmation or answer to the user>\",\n\
-          \"tool\": \"<browser|terminal|gui|file|bash|chat|skill>\"\n\
+          \"tool\": \"<browser|terminal|gui|file|bash|chat|screen_capture|skill>\"\n\
         }}",
-        display_number, user_id, skills_catalog, display_number
+        agent_name, display_number, user_id, skills_catalog, display_number
     );
 
-    // 1. Bedrock Converse via local AWS CLI (fast, uses active AWS credentials / profile)
+    // 1. Anthropic direct API (if ANTHROPIC_API_KEY is present and targeting slot 1)
+    if is_slot_1 {
+        if let Some(anthropic_key) = resolve_anthropic_key() {
+            let body = serde_json::json!({
+                "model": "claude-3-7-sonnet-20250219",
+                "max_tokens": 1024,
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": prompt}]
+            });
+            if let Ok(resp) = http
+                .post("https://api.anthropic.com/v1/messages")
+                .header("x-api-key", anthropic_key)
+                .header("anthropic-version", "2023-06-01")
+                .header("Content-Type", "application/json")
+                .json(&body)
+                .send()
+                .await
+            {
+                if resp.status().is_success() {
+                    if let Ok(json) = resp.json::<serde_json::Value>().await {
+                        if let Some(text) = json
+                            .pointer("/content/0/text")
+                            .and_then(|v| v.as_str())
+                        {
+                            return Some(parse_action_response(text));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Bedrock Converse via local AWS CLI (fast, uses active AWS credentials / profile)
     let cli_res = tokio::task::spawn_blocking({
         let sys = system_prompt.clone();
         let p = prompt.to_string();
+        let primary_model = if is_slot_1 {
+            "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+        } else {
+            "amazon.nova-lite-v1:0"
+        };
         move || {
             let sys_json = serde_json::json!([{"text": sys}]).to_string();
             let msg_json =
@@ -3472,7 +3573,7 @@ async fn query_bedrock_or_gemini(
                 "bedrock-runtime",
                 "converse",
                 "--model-id",
-                "amazon.nova-lite-v1:0",
+                primary_model,
                 "--region",
                 "us-west-2",
                 "--system",
@@ -3488,6 +3589,35 @@ async fn query_bedrock_or_gemini(
                 let text = json.pointer("/output/message/content/0/text")?.as_str()?;
                 Some(parse_action_response(text))
             } else {
+                // If specific Claude Bedrock model is unavailable/unsubscribed, gracefully fallback to Nova Lite with Claude system prompt
+                if is_slot_1 {
+                    let mut fb_cmd = std::process::Command::new("aws");
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::process::CommandExt;
+                        fb_cmd.creation_flags(0x08000000);
+                    }
+                    fb_cmd.args([
+                        "bedrock-runtime",
+                        "converse",
+                        "--model-id",
+                        "amazon.nova-lite-v1:0",
+                        "--region",
+                        "us-west-2",
+                        "--system",
+                        &sys_json,
+                        "--messages",
+                        &msg_json,
+                        "--output",
+                        "json",
+                    ]);
+                    let fb_output = fb_cmd.output().ok()?;
+                    if fb_output.status.success() {
+                        let json: serde_json::Value = serde_json::from_slice(&fb_output.stdout).ok()?;
+                        let text = json.pointer("/output/message/content/0/text")?.as_str()?;
+                        return Some(parse_action_response(text));
+                    }
+                }
                 None
             }
         }
@@ -3585,7 +3715,11 @@ pub async fn send_agent_turn(
         prompt
     );
 
-    let model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3.8-flash".to_string());
+    let model = if display_number == 1 {
+        "claude-3-7-sonnet-20250219".to_string()
+    } else {
+        std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3.8-flash".to_string())
+    };
 
     // 1. Resolve action + reply from LLM or fallback
     let (mut command_to_run, mut reply, detected_tool) = if let Some((cmd, rep, tool)) =
@@ -3613,7 +3747,8 @@ pub async fn send_agent_turn(
 
     if reply.is_empty() {
         let role = match display_number {
-            1 | 4 | 7 => "Browser & Research",
+            1 => "Screen Capture & Computer Use",
+            4 | 7 => "Browser & Research",
             2 | 5 | 8 => "Terminal & Dev",
             3 | 6 | 9 => "QA & Verification",
             _ => "Cloud Automation",
@@ -3754,6 +3889,13 @@ mod tests {
         assert!(cmd6.contains("terminal-launcher"));
         assert_eq!(tool6, "terminal_exec");
         assert!(rep6.contains("1.1.1.1"));
+
+        let res_screen = fallback_command_from_prompt("capture screen", 1);
+        assert!(res_screen.is_some());
+        let (cmd_screen, rep_screen, tool_screen) = res_screen.unwrap();
+        assert_eq!(cmd_screen, "scrot -o /tmp/screen.png");
+        assert!(rep_screen.contains("Captured screen on Display :1"));
+        assert_eq!(tool_screen, "screen_capture");
     }
 
     #[test]
