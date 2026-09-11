@@ -19,3 +19,9 @@ token.json
 node_modules/
 dist/
 target/
+
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/
+
