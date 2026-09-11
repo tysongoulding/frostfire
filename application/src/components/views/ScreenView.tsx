@@ -130,55 +130,53 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full w-full bg-black relative overflow-hidden select-none">
+    <div className="flex-1 flex flex-col h-full w-full bg-theme-bg relative overflow-hidden select-none font-sans">
       {/* Top Left Exit Button to return to Chat */}
       <div className="absolute top-4 left-4 z-30 pointer-events-auto">
         <button
           onClick={onSwitchToChat}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700/80 shadow-lg backdrop-blur-md text-xs font-medium transition-all cursor-pointer group"
+          className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-theme-surface/90 hover:bg-theme-surface text-theme-text-primary border border-theme-border shadow-lg backdrop-blur-md text-sm font-medium transition-all cursor-pointer group"
           title="Exit to Chat"
         >
-          <ArrowLeft className="w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-colors" />
+          <ArrowLeft className="w-4 h-4 text-theme-text-muted group-hover:text-theme-text-primary transition-colors" />
           <span>Exit to Chat</span>
         </button>
       </div>
 
-      {/* Live Desktop Viewport taking up dynamic workspace with Fixed 16:10 aspect ratio and zero scrollbars */}
-      <div className="flex-1 w-full h-full min-h-0 min-w-0 relative overflow-hidden bg-black flex items-center justify-center p-2 sm:p-3">
-        <div className="w-full h-full max-w-full max-h-full aspect-[16/10] bg-black rounded-xl overflow-hidden shadow-2xl border border-zinc-800/80 flex items-center justify-center">
-          <iframe
-            key={`${vncUrl}-${streamEpoch}`}
-            src={vncUrl}
-            title={`${agentName}'s Live Display`}
-            className="w-full h-full border-none block overflow-hidden"
-            scrolling="no"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-            allow="clipboard-read; clipboard-write; autoplay; fullscreen"
-          />
-        </div>
+      {/* Main View Space: Takes up the entire mainview space edge-to-edge with the same background as chat */}
+      <div className="flex-1 w-full h-full min-h-0 min-w-0 relative overflow-hidden bg-theme-bg flex items-center justify-center">
+        <iframe
+          key={`${vncUrl}-${streamEpoch}`}
+          src={vncUrl}
+          title={`${agentName}'s Live Display`}
+          className="w-full h-full border-none block overflow-hidden bg-transparent"
+          scrolling="no"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          allow="clipboard-read; clipboard-write; autoplay; fullscreen"
+        />
       </div>
 
       {/* Bottom Buttons Bar / Dock */}
-      <div className="h-14 bg-zinc-950/95 border-t border-zinc-800 px-3 sm:px-5 flex items-center justify-between relative shrink-0 z-20">
-        {/* Left balance spacer (IP address removed) */}
+      <div className="h-16 bg-theme-surface/95 border-t border-theme-border px-3 sm:px-6 flex items-center justify-between relative shrink-0 z-20 font-sans">
+        {/* Left balance spacer */}
         <div className="hidden sm:block shrink-0 w-24" />
 
         {/* Center: Center-aligned Dock Controls */}
-        <div className="flex items-center justify-center gap-1.5 sm:gap-2 flex-1 max-w-3xl mx-auto min-w-0">
+        <div className="flex items-center justify-center gap-2 sm:gap-3 flex-1 max-w-3xl mx-auto min-w-0">
           {/* App launch buttons */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => handleLaunchApp('browser')}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-theme-bg hover:bg-theme-surface border border-theme-border text-sm font-medium text-theme-text-primary transition-colors cursor-pointer"
               title="Launch Google Chrome on Cloud Display"
             >
-              <Globe className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <Globe className="w-4 h-4 text-amber-400 shrink-0" />
               <span className="hidden sm:inline">Chrome</span>
             </button>
 
             <button
               onClick={() => handleLaunchApp('files')}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-theme-bg hover:bg-theme-surface border border-theme-border text-sm font-medium text-theme-text-primary transition-colors cursor-pointer"
               title="Launch Filesystem Manager (Thunar)"
             >
               <Folder className="w-3.5 h-3.5 text-sky-400 shrink-0" />
@@ -187,30 +185,30 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
 
             <button
               onClick={() => handleLaunchApp('terminal')}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-200 transition-colors cursor-pointer"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-theme-bg hover:bg-theme-surface border border-theme-border text-sm font-medium text-theme-text-primary transition-colors cursor-pointer"
               title="Launch XFCE Terminal"
             >
-              <Terminal className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <Terminal className="w-4 h-4 text-emerald-400 shrink-0" />
               <span className="hidden sm:inline">Terminal</span>
             </button>
           </div>
 
           {/* Quick Command Prompt */}
-          <form onSubmit={handleQuickSubmit} className="flex items-center gap-1.5 flex-1 max-w-sm sm:max-w-md min-w-0">
+          <form onSubmit={handleQuickSubmit} className="flex items-center gap-2 flex-1 max-w-sm sm:max-w-md min-w-0">
             <input
               type="text"
               value={quickCmd}
               onChange={(e) => setQuickCmd(e.target.value)}
               placeholder={`Instruct ${agentName} (Display :${displayNumber})...`}
-              className="flex-1 bg-zinc-900 border border-zinc-800 focus:border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-500 outline-none transition-colors min-w-0"
+              className="flex-1 bg-theme-bg border border-theme-border focus:border-theme-accent-primary rounded-lg px-3.5 py-2 text-sm text-theme-text-primary placeholder:text-theme-text-muted outline-none transition-colors min-w-0 font-sans"
             />
             <button
               type="submit"
               disabled={!quickCmd.trim()}
-              className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white transition-colors cursor-pointer shrink-0"
+              className="p-2 rounded-lg bg-theme-accent-primary hover:opacity-90 disabled:opacity-40 text-white transition-colors cursor-pointer shrink-0"
               title="Execute command"
             >
-              <ArrowUp className="w-3.5 h-3.5" />
+              <ArrowUp className="w-4 h-4" />
             </button>
           </form>
         </div>
