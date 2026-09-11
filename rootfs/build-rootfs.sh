@@ -81,8 +81,7 @@ fi
 
 if [ -d "${ROOT_DIR}/home-box/frostfire-host" ]; then
   sudo cp -r "${ROOT_DIR}/home-box/frostfire-host/"* "${MOUNT_DIR}/home/box/frostfire-host/"
-elif [ -d "${ROOT_DIR}/home-box/sand-host" ]; then
-  sudo cp -r "${ROOT_DIR}/home-box/sand-host/"* "${MOUNT_DIR}/home/box/frostfire-host/"
+  sudo ln -sfn /home/box/frostfire-host "${MOUNT_DIR}/home/box/sand-host"
 fi
 
 if [ -d "${ROOT_DIR}/usr-local-share" ]; then
