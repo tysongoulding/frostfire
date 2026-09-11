@@ -7,6 +7,8 @@ import {
   MessageSquare,
   RotateCw,
   ArrowLeft,
+  Flame,
+  Snowflake,
   X,
 } from 'lucide-react';
 import { getVncUrl, resolveVncSession, DEFAULT_EC2_HOST } from '../../lib/vnc';
@@ -42,6 +44,7 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
   const currentUserId = propUserId || currentUser?.id || activeUserId || 'default';
   const [quickCmd, setQuickCmd] = useState('');
   const [streamEpoch, setStreamEpoch] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
   const displayNumber = propDisplayNumber ?? 1;
   const rawVmHost = propVmHost || currentUser?.vmHost || DEFAULT_EC2_HOST;
@@ -68,6 +71,14 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
     port: agentPort,
     scale: 'fit',
   });
+
+  useEffect(() => {
+    setIsLoading(true);
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 1800);
+    return () => clearTimeout(timer);
+  }, [vncUrl, streamEpoch]);
 
   const handleLaunchApp = async (app: 'browser' | 'terminal' | 'files') => {
     const cmd =
@@ -145,6 +156,21 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
 
       {/* Main View Space: Takes up the entire mainview space edge-to-edge with the same background as chat */}
       <div className="flex-1 w-full h-full min-h-0 min-w-0 relative overflow-hidden bg-theme-bg flex items-center justify-center">
+        {/* Center Screen Loading Indicator matching LLM Working style */}
+        {isLoading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-theme-bg pointer-events-none transition-opacity duration-300">
+            <div className="flex items-center gap-3 px-5 py-3 rounded-2xl bg-theme-surface/90 border border-theme-border shadow-2xl backdrop-blur-md">
+              <div className="icon-morph-container">
+                <Flame className="icon-flame w-4 h-4" />
+                <Snowflake className="icon-snowflake w-4 h-4" />
+              </div>
+              <div className="flex items-center select-none font-mono text-sm sm:text-base tracking-wide font-bold">
+                <span className="animate-frostfire-text">Loading....</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         <iframe
           key={`${vncUrl}-${streamEpoch}`}
           src={vncUrl}
@@ -153,6 +179,9 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
           scrolling="no"
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
           allow="clipboard-read; clipboard-write; autoplay; fullscreen"
+          onLoad={() => {
+            setTimeout(() => setIsLoading(false), 500);
+          }}
         />
       </div>
 
