@@ -24,6 +24,7 @@ sudo apt-get update && sudo apt-get install -y \
   wget \
   git \
   debootstrap \
+  debian-archive-keyring \
   qemu-utils \
   e2fsprogs \
   iptables \

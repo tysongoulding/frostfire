@@ -14,14 +14,46 @@ Write-Host "============================================================" -Foreg
 
 # 1. Detect public IP if AllowedCidr is not provided
 if ([string]::IsNullOrWhiteSpace($AllowedCidr)) {
-    try {
-        $myIp = (Invoke-RestMethod -Uri "https://checkip.amazonaws.com").Trim()
-        $AllowedCidr = "$myIp/32"
+    $detectedIp = $null
+    $endpoints = @("https://checkip.amazonaws.com", "https://api.ipify.org", "https://ifconfig.me")
+    foreach ($uri in $endpoints) {
+        try {
+            $resp = (Invoke-RestMethod -Uri $uri -TimeoutSec 4).Trim()
+            if ($resp -match '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$') {
+                $detectedIp = $resp
+                break
+            }
+        } catch {
+            # try next endpoint
+        }
+    }
+
+    if ($detectedIp) {
+        $AllowedCidr = "$detectedIp/32"
         Write-Host "[+] Automatically detected client public IP: $AllowedCidr" -ForegroundColor Green
-    } catch {
+    } else {
         $AllowedCidr = "0.0.0.0/0"
         Write-Host "[-] Could not determine public IP, defaulting to 0.0.0.0/0" -ForegroundColor Yellow
     }
+} else {
+    Write-Host "[+] Using provided AllowedCidr: $AllowedCidr" -ForegroundColor Green
+}
+
+# 2. Check or create EC2 KeyPair in target region
+Write-Host ">>> Checking EC2 KeyPair '$KeyName' in $Region..."
+$describeOutput = aws ec2 describe-key-pairs --key-names $KeyName --region $Region 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[*] EC2 KeyPair '$KeyName' not found in $Region. Creating new KeyPair..." -ForegroundColor Yellow
+    $keyPemFile = Join-Path (Get-Location) "$KeyName.pem"
+    $keyMaterial = aws ec2 create-key-pair --key-name $KeyName --query "KeyMaterial" --output text --region $Region
+    if ($LASTEXITCODE -eq 0 -and [string]::IsNullOrWhiteSpace($keyMaterial) -eq $false) {
+        [System.IO.File]::WriteAllText($keyPemFile, $keyMaterial)
+        Write-Host "[+] Created EC2 KeyPair '$KeyName' and saved private key to '$keyPemFile'." -ForegroundColor Green
+    } else {
+        throw "Failed to create EC2 KeyPair '$KeyName' in $Region."
+    }
+} else {
+    Write-Host "[+] EC2 KeyPair '$KeyName' found in $Region." -ForegroundColor Green
 }
 
 $templatePath = Join-Path $PSScriptRoot "..\deploy\aws\poc-host.yaml"
