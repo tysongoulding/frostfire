@@ -6,6 +6,8 @@ import {
   ArrowUp,
   MessageSquare,
   RotateCw,
+  ArrowLeft,
+  X,
 } from 'lucide-react';
 import { getVncUrl, resolveVncSession, DEFAULT_EC2_HOST } from '../../lib/vnc';
 import { useUserStore } from '../../store/userStore';
@@ -132,6 +134,18 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
 
   return (
     <div className="flex-1 flex flex-col h-full w-full bg-black relative overflow-hidden select-none">
+      {/* Top Left Exit Button to return to Chat */}
+      <div className="absolute top-4 left-4 z-30">
+        <button
+          onClick={onSwitchToChat}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700/80 shadow-lg backdrop-blur-sm text-xs font-medium transition-all cursor-pointer group"
+          title="Exit to Chat"
+        >
+          <ArrowLeft className="w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-colors" />
+          <span>Exit to Chat</span>
+        </button>
+      </div>
+
       {/* Live Desktop Viewport taking up dynamic workspace with Fixed 16:10 aspect ratio and zero scrollbars */}
       <div className="flex-1 w-full h-full min-h-0 min-w-0 relative overflow-hidden bg-black flex items-center justify-center p-2 sm:p-3">
         <div className="w-full h-full max-w-full max-h-full aspect-[16/10] bg-black rounded-xl overflow-hidden shadow-2xl border border-zinc-800/80 flex items-center justify-center">
