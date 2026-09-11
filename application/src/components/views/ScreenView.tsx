@@ -7,7 +7,7 @@ import {
   MessageSquare,
   RotateCw,
 } from 'lucide-react';
-import { getVncUrl, resolveVncSession, DEFAULT_LAMBDA_HOST } from '../../lib/vnc';
+import { getVncUrl, resolveVncSession, DEFAULT_EC2_HOST } from '../../lib/vnc';
 import { useUserStore } from '../../store/userStore';
 
 interface ScreenViewProps {
@@ -42,9 +42,9 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
   const [streamEpoch, setStreamEpoch] = useState(0);
 
   const displayNumber = propDisplayNumber ?? 1;
-  const rawVmHost = propVmHost || currentUser?.vmHost || DEFAULT_LAMBDA_HOST;
-  const vmHost = (!rawVmHost || rawVmHost === '44.242.94.86') ? DEFAULT_LAMBDA_HOST : rawVmHost;
-  const execPort = propExecPort ?? (currentUser?.execPort || 443);
+  const rawVmHost = propVmHost || currentUser?.vmHost || DEFAULT_EC2_HOST;
+  const vmHost = (!rawVmHost || rawVmHost === '44.242.94.86') ? DEFAULT_EC2_HOST : rawVmHost;
+  const execPort = propExecPort ?? (currentUser?.execPort || 1339);
   const [resolvedPort, setResolvedPort] = useState<number | undefined>(propVncPort);
 
   useEffect(() => {
@@ -139,7 +139,8 @@ export const ScreenView: React.FC<ScreenViewProps> = ({
             key={`${vncUrl}-${streamEpoch}`}
             src={vncUrl}
             title={`${agentName}'s Live Display`}
-            className="w-full h-full border-none block"
+            className="w-full h-full border-none block overflow-hidden"
+            scrolling="no"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             allow="clipboard-read; clipboard-write; autoplay; fullscreen"
           />

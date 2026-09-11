@@ -1,4 +1,4 @@
-export const DEFAULT_EC2_HOST = '44.242.94.86';
+export const DEFAULT_EC2_HOST = '35.89.125.63';
 export const DEFAULT_LAMBDA_HOST = '4hkbgj6zkmfm674e3nxlpagshq0moaoy.lambda-url.us-west-2.on.aws';
 
 export interface VncOptions {
@@ -18,7 +18,7 @@ export function getVncUrl(
   displayNumber: number,
   optionsOrHost?: VncOptions | string
 ): string {
-  let host = DEFAULT_LAMBDA_HOST;
+  let host = DEFAULT_EC2_HOST;
   let scale: 'fixed' | 'fit' = 'fixed';
   let customPort: number | undefined;
   let customToken: string | undefined;
@@ -35,13 +35,8 @@ export function getVncUrl(
     else if (optionsOrHost.ssl) protocol = 'https';
   }
 
-  // Redirect legacy offline EC2 host to new Lambda microVM
-  if (!host || host === DEFAULT_EC2_HOST || host === '44.242.94.86') {
-    host = DEFAULT_LAMBDA_HOST;
-  }
-
   // Handle Lambda microVM Function URLs or HTTPS hostnames
-  if (host.includes('lambda-url') || host.startsWith('http://') || host.startsWith('https://')) {
+  if (host.includes('lambda-url') || host.startsWith('https://')) {
     const cleanHost = host.replace(/^https?:\/\//, '').replace(/\/+$/, '');
     const query = new URLSearchParams();
     query.set('display', String(displayNumber));
@@ -51,8 +46,9 @@ export function getVncUrl(
 
   const port = customPort ?? getVncPort(displayNumber);
   const tokenQuery = customToken ? `token=${encodeURIComponent(customToken)}&` : '';
+  const resizeMode = scale === 'fit' ? 'scale' : 'off';
 
-  return `${protocol}://${host}:${port}/desktop.html?${tokenQuery}scale=${scale}`;
+  return `${protocol}://${host}:${port}/vnc.html?${tokenQuery}autoconnect=true&resize=${resizeMode}&reconnect=true`;
 }
 
 export function getVncWebSocketUrl(
