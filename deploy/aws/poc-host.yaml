@@ -191,6 +191,101 @@ Resources:
           chmod +x /usr/local/bin/check-idle-shutdown.sh
           (crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/check-idle-shutdown.sh") | crontab -
 
+          # 8. Configure Host Identity and Prompt (user@firefrost)
+          hostnamectl set-hostname firefrost || true
+          echo "127.0.0.1 firefrost" >> /etc/hosts || true
+          sed -i "s/\\\u@\\\h/user@firefrost/g" /etc/bash.bashrc /etc/skel/.bashrc /home/ubuntu/.bashrc 2>/dev/null || true
+          echo 'export PS1="\[\033[01;32m\]user@firefrost\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> /home/ubuntu/.bashrc || true
+
+          # 9. Configure Persistent Systemd Services (Survives VM Stop / Start)
+          cat << 'EOF' > /etc/systemd/system/frostfire-xvfb.service
+          [Unit]
+          Description=Frostfire Xvfb Virtual Framebuffer (:1)
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=ubuntu
+          ExecStart=/usr/bin/Xvfb :1 -screen 0 1280x800x24 -nolisten tcp
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          cat << 'EOF' > /etc/systemd/system/frostfire-wm.service
+          [Unit]
+          Description=Frostfire Window Manager (xfwm4)
+          After=frostfire-xvfb.service
+          Requires=frostfire-xvfb.service
+
+          [Service]
+          Type=simple
+          User=ubuntu
+          Environment=DISPLAY=:1
+          ExecStart=/usr/bin/xfwm4 --display=:1
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          cat << 'EOF' > /etc/systemd/system/frostfire-x11vnc.service
+          [Unit]
+          Description=Frostfire X11VNC Server
+          After=frostfire-xvfb.service
+          Requires=frostfire-xvfb.service
+
+          [Service]
+          Type=simple
+          User=ubuntu
+          ExecStart=/usr/bin/x11vnc -display :1 -rfbport 5900 -shared -forever -nopw
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          cat << 'EOF' > /etc/systemd/system/frostfire-websockify.service
+          [Unit]
+          Description=Frostfire noVNC Websockify Bridge
+          After=frostfire-x11vnc.service
+          Requires=frostfire-x11vnc.service
+
+          [Service]
+          Type=simple
+          User=ubuntu
+          ExecStart=/usr/bin/python3 /usr/bin/websockify --web /usr/share/novnc 6080 127.0.0.1:5900
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          cat << 'EOF' > /etc/systemd/system/frostfire-exec.service
+          [Unit]
+          Description=Frostfire Remote Execution Daemon (Port 1339)
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=ubuntu
+          WorkingDirectory=/home/ubuntu
+          ExecStart=/usr/bin/node /home/ubuntu/exec-server.cjs
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          systemctl daemon-reload
+          systemctl enable frostfire-xvfb frostfire-wm frostfire-x11vnc frostfire-websockify frostfire-exec || true
+
           echo "============================================================"
           echo ">>> Frostfire User VM Host Bootstrap Complete!"
           echo "============================================================"
@@ -200,23 +295,34 @@ Resources:
         - Key: Project
           Value: Frostfire
 
+  UserVmEip:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref UserVmInstance
+      Tags:
+        - Key: Name
+          Value: frostfire-user-vm-eip
+        - Key: Project
+          Value: Frostfire
+
 Outputs:
   InstanceId:
     Description: 'EC2 Instance ID of the User VM Host'
     Value: !Ref UserVmInstance
 
   PublicIp:
-    Description: 'Public IPv4 address of the User VM Host'
-    Value: !GetAtt UserVmInstance.PublicIp
+    Description: 'Persistent Elastic IPv4 address of the User VM Host'
+    Value: !Ref UserVmEip
 
   SshAccessCommand:
     Description: 'Command to connect to the host via SSH'
-    Value: !Sub 'ssh -i "${KeyName}.pem" ubuntu@${UserVmInstance.PublicIp}'
+    Value: !Sub 'ssh -i "${KeyName}.pem" ubuntu@${UserVmEip}'
 
   NoVncUrl:
     Description: 'Web-based remote desktop URL'
-    Value: !Sub 'http://${UserVmInstance.PublicIp}:6080/vnc.html'
+    Value: !Sub 'http://${UserVmEip}:6080/vnc.html'
 
   WindowRouterUrl:
     Description: 'Frostfire Window Router reverse proxy endpoint'
-    Value: !Sub 'http://${UserVmInstance.PublicIp}:1339'
+    Value: !Sub 'http://${UserVmEip}:1339'
