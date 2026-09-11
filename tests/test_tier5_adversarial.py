@@ -209,7 +209,10 @@ class TestAdversarialCloudFormationAndHostSetup(FrostfireTestCase):
     def test_spot_market_persistence_and_preservation(self):
         """Spot configuration ensures persistent instance and EBS volume retention."""
         instance = self.cf_yaml['Resources']['UserVmInstance']['Properties']
-        market = instance.get('InstanceMarketOptions', {})
+        market = instance.get('InstanceMarketOptions')
+        if not market and 'LaunchTemplate' in instance:
+            lt = self.cf_yaml['Resources'].get('UserVmLaunchTemplate', {})
+            market = lt.get('Properties', {}).get('LaunchTemplateData', {}).get('InstanceMarketOptions', {})
         self.assertEqual(market.get('MarketType'), 'spot')
         spot_opts = market.get('SpotOptions', {})
         self.assertEqual(spot_opts.get('SpotInstanceType'), 'persistent')

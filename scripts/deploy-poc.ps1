@@ -73,6 +73,10 @@ aws cloudformation deploy `
         AllowedCidr=$AllowedCidr `
     --region $Region
 
+if ($LASTEXITCODE -ne 0) {
+    throw "CloudFormation deployment failed with exit code $LASTEXITCODE."
+}
+
 Write-Host "[+] Stack deployment finished successfully!" -ForegroundColor Green
 
 Write-Host ">>> Fetching stack outputs..."

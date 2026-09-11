@@ -60,9 +60,22 @@ Resources:
         - Key: Name
           Value: frostfire-poc-sg
 
+  UserVmLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        InstanceMarketOptions:
+          MarketType: spot
+          SpotOptions:
+            SpotInstanceType: persistent
+            InstanceInterruptionBehavior: stop
+
   UserVmInstance:
     Type: AWS::EC2::Instance
     Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref UserVmLaunchTemplate
+        Version: !GetAtt UserVmLaunchTemplate.LatestVersionNumber
       ImageId: '{{resolve:ssm:/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id}}'
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
@@ -74,11 +87,6 @@ Resources:
             VolumeSize: !Ref VolumeSize
             VolumeType: gp3
             DeleteOnTermination: false
-      InstanceMarketOptions:
-        MarketType: spot
-        SpotOptions:
-          SpotInstanceType: persistent
-          InstanceInterruptionBehavior: stop
       UserData:
         Fn::Base64: !Sub |
           #!/usr/bin/env bash

@@ -84,7 +84,10 @@ class TestTier1F01CloudFormationTemplate(FrostfireTestCase):
         self.assertEqual(instance.get("Type"), "AWS::EC2::Instance")
         props = instance.get("Properties", {})
         self.assertIn("BlockDeviceMappings", props)
-        market = props.get("InstanceMarketOptions", {})
+        market = props.get("InstanceMarketOptions")
+        if not market and "LaunchTemplate" in props:
+            lt = resources.get("UserVmLaunchTemplate", {})
+            market = lt.get("Properties", {}).get("LaunchTemplateData", {}).get("InstanceMarketOptions", {})
         self.assertEqual(market.get("MarketType"), "spot")
         self.assertEqual(market.get("SpotOptions", {}).get("SpotInstanceType"), "persistent")
 
