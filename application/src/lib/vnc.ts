@@ -48,7 +48,7 @@ export function getVncUrl(
   const tokenQuery = customToken ? `token=${encodeURIComponent(customToken)}&` : '';
   const resizeMode = scale === 'fit' ? 'scale' : 'off';
 
-  return `${protocol}://${host}:${port}/vnc.html?${tokenQuery}autoconnect=true&resize=${resizeMode}&reconnect=true&show_dot=false&v=stealth`;
+  return `${protocol}://${host}:${port}/vnc.html?${tokenQuery}autoconnect=true&resize=${resizeMode}&reconnect=true`;
 }
 
 export function getVncWebSocketUrl(
