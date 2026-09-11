@@ -3692,6 +3692,8 @@ async fn query_bedrock_or_gemini(
                     use std::os::windows::process::CommandExt;
                     cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
                 }
+                cmd.env("PYTHONUTF8", "1");
+                cmd.env("PYTHONIOENCODING", "utf-8");
                 cmd.args([
                     "bedrock-runtime",
                     "converse",
@@ -3706,16 +3708,21 @@ async fn query_bedrock_or_gemini(
                     "--output",
                     "json",
                 ]);
-                if let Ok(output) = cmd.output() {
-                    if output.status.success() {
-                        if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
-                            if let Some(text) = json.pointer("/output/message/content/0/text").and_then(|v| v.as_str()) {
-                                final_res = Some(parse_action_response(text));
-                                break;
+                match cmd.output() {
+                    Ok(output) => {
+                        if output.status.success() {
+                            if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
+                                if let Some(text) = json.pointer("/output/message/content/0/text").and_then(|v| v.as_str()) {
+                                    final_res = Some(parse_action_response(text));
+                                    break;
+                                }
                             }
+                        } else {
+                            tracing::warn!("Bedrock model {} failed (exit code {:?}): {}", model_id, output.status.code(), String::from_utf8_lossy(&output.stderr));
                         }
-                    } else {
-                        tracing::warn!("Bedrock model {} failed: {}", model_id, String::from_utf8_lossy(&output.stderr));
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to execute aws CLI {}: {}", aws_bin, e);
                     }
                 }
             }
@@ -3819,6 +3826,7 @@ async fn query_bedrock_or_gemini(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn send_agent_turn(
     user_id: String,
     display_number: u32,
@@ -4076,5 +4084,12 @@ mod tests {
         assert_eq!(val["userId"], "user2");
         assert_eq!(val["displayNumber"], 2);
         assert!(!val["reply"].as_str().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_query_bedrock_live() {
+        let res = query_bedrock_or_gemini("user-1", 1, "Hello", None, None, None, None).await;
+        assert!(res.is_some());
     }
 }
