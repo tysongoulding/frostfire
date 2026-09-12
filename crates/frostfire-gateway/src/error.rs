@@ -20,6 +20,21 @@ pub enum GatewayError {
     #[error("Stripe flush error: {0}")]
     StripeError(String),
 
+    #[error("Authentication error: {0}")]
+    AuthError(String),
+
+    #[error("Database error: {0}")]
+    DatabaseError(String),
+
+    #[error("Monthly spend cap exceeded for tenant '{0}': cap {1} micro-cents, attempted {2}")]
+    SpendCapExceeded(String, i64, i64),
+
+    #[error("Invalid or tampered token: {0}")]
+    InvalidToken(String),
+
+    #[error("License expired for tenant '{0}'")]
+    LicenseExpired(String),
+
     #[error("Tunnel error: {0}")]
     TunnelError(String),
 

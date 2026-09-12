@@ -18,11 +18,36 @@ export interface UserProfile {
   execPort?: number;
   isDefault?: boolean;
   createdAt: string;
+  userUuid?: string;
+  stripeCustomerId?: string;
+  tier?: string;
+}
+
+export interface LicenseInfo {
+  user_uuid: string;
+  email: string;
+  stripe_customer_id: string;
+  tier: string;
+  expires_at: number;
+  is_valid: boolean;
+}
+
+export interface BillingStatus {
+  user_uuid: string;
+  tier: string;
+  included_credits_micro_cents: number;
+  current_balance_micro_cents: number;
+  unbilled_tokens: number;
+  unbilled_micro_cents: number;
+  spend_cap_micro_cents: number;
+  status: string;
 }
 
 interface UserState {
   activeUserId: string;
   users: UserProfile[];
+  licenseInfo: LicenseInfo | null;
+  billingStatus: BillingStatus | null;
   getActiveUser: () => UserProfile;
   addUser: (profile: Partial<UserProfile>) => UserProfile;
   updateUser: (id: string, updates: Partial<UserProfile>) => void;
@@ -33,6 +58,11 @@ interface UserState {
   deleteUser: (id: string) => void;
   switchUser: (id: string) => void;
   initUsers: (data: { activeUserId?: string; users?: UserProfile[] }) => void;
+  loadLicense: () => Promise<void>;
+  activateLicenseToken: (token: string) => Promise<LicenseInfo>;
+  deactivateLicenseToken: () => Promise<void>;
+  fetchBillingStatus: () => Promise<void>;
+  updateSpendCap: (capMicroCents: number) => Promise<void>;
 }
 
 export const DEFAULT_USERS: UserProfile[] = [
@@ -124,6 +154,8 @@ const initial = loadInitialUsers();
 export const useUserStore = create<UserState>((set, get) => ({
   activeUserId: initial.activeUserId,
   users: initial.users,
+  licenseInfo: null,
+  billingStatus: null,
 
   getActiveUser: () => {
     const { users, activeUserId } = get();
@@ -219,6 +251,59 @@ export const useUserStore = create<UserState>((set, get) => ({
       activeUserId: activeId,
     });
     persist({ activeUserId: activeId, users: loadedUsers });
+  },
+
+  loadLicense: async () => {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const info = await invoke<LicenseInfo | null>("get_license_status");
+      set({ licenseInfo: info });
+      if (info) {
+        get().fetchBillingStatus().catch(() => {});
+      }
+    } catch (e) {
+      console.error("Failed to load license:", e);
+    }
+  },
+
+  activateLicenseToken: async (token: string) => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const info = await invoke<LicenseInfo>("activate_license_token", { token });
+    set({ licenseInfo: info });
+    const active = get().getActiveUser();
+    get().updateUser(active.id, {
+      userUuid: info.user_uuid,
+      stripeCustomerId: info.stripe_customer_id,
+      tier: info.tier,
+      email: info.email,
+    });
+    get().fetchBillingStatus().catch(() => {});
+    return info;
+  },
+
+  deactivateLicenseToken: async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("deactivate_license_token");
+    set({ licenseInfo: null, billingStatus: null });
+  },
+
+  fetchBillingStatus: async () => {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const status = await invoke<BillingStatus>("get_user_billing_status");
+      set({ billingStatus: status });
+    } catch (e) {
+      console.error("Failed to fetch billing status:", e);
+    }
+  },
+
+  updateSpendCap: async (capMicroCents: number) => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("set_user_spend_cap", { capMicroCents });
+    const current = get().billingStatus;
+    if (current) {
+      set({ billingStatus: { ...current, spend_cap_micro_cents: capMicroCents } });
+    }
   },
 }));
 

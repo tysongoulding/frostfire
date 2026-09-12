@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod keystore;
+pub mod license;
 pub mod oauth;
 pub mod paths;
 pub mod permissions;
@@ -12,17 +13,18 @@ use tauri::Emitter;
 use tokio::sync::RwLock;
 
 use commands::{
-    close_window, create_agent_session, delete_agent_session, evaluate_host_security,
-    execute_command, execute_remote_cloud_command, fetch_all_provider_models, fetch_provider_models,
-    get_blackboard_manifest, get_blackboard_presentation, get_cached_models, get_cloud_agents,
-    get_dag_state, get_dynamic_screen_context, get_prompt_config, get_saved_auth_keys,
-    get_tunnel_status, list_active_session_grants, list_agent_sessions, load_lota_settings,
-    minimize_window, open_external_url, open_local_path,
+    activate_license_token, close_window, create_agent_session, deactivate_license_token,
+    delete_agent_session, evaluate_host_security, execute_command, execute_remote_cloud_command,
+    fetch_all_provider_models, fetch_provider_models, get_blackboard_manifest,
+    get_blackboard_presentation, get_cached_models, get_cloud_agents, get_dag_state,
+    get_dynamic_screen_context, get_license_status, get_prompt_config, get_saved_auth_keys,
+    get_tunnel_status, get_user_billing_status, list_active_session_grants, list_agent_sessions,
+    load_lota_settings, minimize_window, open_external_url, open_local_path,
     respond_hitl_approval, revoke_session_grant, save_custom_prompt, save_lota_settings,
-    search_web, send_agent_turn, send_rpc_command, set_display_takeover, start_drag_window,
-    start_oauth_login, submit_host_security_decision, sync_provider_keys, test_provider_key,
-    toggle_maximize_window, trigger_teach_session, update_dag_task_status, verify_invariants,
-    AppState,
+    search_web, send_agent_turn, send_rpc_command, set_display_takeover, set_user_spend_cap,
+    start_drag_window, start_oauth_login, submit_host_security_decision, sync_provider_keys,
+    test_provider_key, toggle_maximize_window, trigger_teach_session, update_dag_task_status,
+    verify_invariants, AppState,
 };
 use frostfire_core::blackboard::BlackboardStore;
 use frostfire_core::dag::WorkstreamDag;
@@ -271,6 +273,11 @@ pub fn run() {
             submit_host_security_decision,
             list_active_session_grants,
             revoke_session_grant,
+            activate_license_token,
+            get_license_status,
+            deactivate_license_token,
+            get_user_billing_status,
+            set_user_spend_cap,
         ])
         .run(tauri::generate_context!())
         .expect("error while running frostfireOS desktop application");

@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 frostfire-proto = { workspace = true }
 frostfire-tunnel = { workspace = true }
+frostfire-security = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
 serde = { workspace = true }
@@ -20,3 +21,7 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 regex = "1.10"
+rusqlite = { workspace = true }
+ring = "0.17"
+base64 = "0.22"
+sha2 = { workspace = true }

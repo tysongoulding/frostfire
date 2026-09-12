@@ -12,6 +12,7 @@ import {
   Copy,
   Check,
 } from 'lucide-react';
+import { UsageBillingSettings } from '../settings/UsageBillingSettings';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -297,62 +298,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
             {/* 3. USAGE & BILLING TAB */}
             {activeTab === 'billing' && (
-              <div className="space-y-6">
-                <div className="space-y-3">
-                  <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">
-                    Usage
-                  </span>
-                  <div className="p-4 rounded-xl border border-theme-border bg-theme-bg/50 space-y-4">
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between font-medium">
-                        <span className="text-theme-text-primary">Weekly usage</span>
-                        <span className="text-theme-text-primary font-mono">1%</span>
-                      </div>
-                      <div className="w-full bg-theme-surface h-1.5 rounded-full overflow-hidden border border-theme-border">
-                        <div className="h-full bg-theme-accent-primary w-[1%]" />
-                      </div>
-                      <span className="text-[10px] text-theme-text-muted block">Resets in 6 days</span>
-                    </div>
-
-                    <div className="pt-3 border-t border-theme-border space-y-1">
-                      <div className="flex justify-between font-medium">
-                        <span className="text-theme-text-primary">On-demand usage</span>
-                        <span className="text-theme-text-primary font-mono">$0</span>
-                      </div>
-                      <span className="text-[10px] text-theme-text-muted block">Resets in 13 days</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">
-                    On-Demand
-                  </span>
-                  <div className="p-4 rounded-xl border border-theme-border bg-theme-bg/50 flex items-center justify-between gap-4">
-                    <div>
-                      <span className="text-theme-text-primary font-medium block">On-Demand</span>
-                      <span className="text-[11px] text-theme-text-muted block">
-                        On-demand spend is billed through Cursor. Manage the limit in the Cursor dashboard.
-                      </span>
-                    </div>
-                    <button className="px-3 py-1.5 rounded-lg border border-theme-border bg-theme-surface hover:bg-theme-bg text-theme-text-primary shrink-0 font-medium text-xs cursor-pointer">
-                      Open Cursor Dashboard
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <span className="text-[11px] font-semibold text-theme-text-muted uppercase tracking-wider block">
-                    Manage Plan
-                  </span>
-                  <div className="p-4 rounded-xl border border-theme-border bg-theme-bg/50 flex items-center justify-between gap-4">
-                    <span className="text-theme-text-primary font-medium">Request Upgrade</span>
-                    <button className="px-3.5 py-1.5 rounded-lg bg-theme-accent-primary text-black font-semibold hover:opacity-90 active:scale-95 text-xs cursor-pointer">
-                      Request Upgrade
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <UsageBillingSettings />
             )}
 
             {/* 4. UPDATES TAB */}

@@ -105,6 +105,70 @@ pub async fn revoke_session_grant(
 }
 
 #[tauri::command]
+pub async fn activate_license_token(
+    token: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<crate::license::LicenseInfo, String> {
+    crate::license::activate_license(&token, &state.keystore).await
+}
+
+#[tauri::command]
+pub async fn get_license_status(
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<crate::license::LicenseInfo>, String> {
+    crate::license::get_active_license(&state.keystore).await
+}
+
+#[tauri::command]
+pub async fn deactivate_license_token(
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    crate::license::deactivate_license(&state.keystore).await
+}
+
+#[tauri::command]
+pub async fn get_user_billing_status(
+    state: tauri::State<'_, AppState>,
+) -> Result<crate::license::BillingStatus, String> {
+    let license = crate::license::get_active_license(&state.keystore)
+        .await?
+        .ok_or_else(|| "No active license token found. Please activate your license.".to_string())?;
+
+    let cap_secret = state
+        .keystore
+        .get_secret(crate::license::SPEND_CAP_KEY)
+        .await
+        .ok()
+        .flatten();
+    let spend_cap = cap_secret
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(frostfire_gateway::DEFAULT_SPEND_CAP_MICRO_CENTS);
+
+    Ok(crate::license::BillingStatus {
+        user_uuid: license.user_uuid,
+        tier: license.tier,
+        included_credits_micro_cents: frostfire_gateway::DEFAULT_INCLUDED_CREDITS_MICRO_CENTS,
+        current_balance_micro_cents: frostfire_gateway::DEFAULT_INCLUDED_CREDITS_MICRO_CENTS,
+        unbilled_tokens: 0,
+        unbilled_micro_cents: 0,
+        spend_cap_micro_cents: spend_cap,
+        status: "active".to_string(),
+    })
+}
+
+#[tauri::command]
+pub async fn set_user_spend_cap(
+    cap_micro_cents: i64,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    state
+        .keystore
+        .set_secret(crate::license::SPEND_CAP_KEY, &cap_micro_cents.to_string())
+        .await
+        .map_err(|e| format!("Failed to store spend cap: {e}"))
+}
+
+#[tauri::command]
 pub async fn open_local_path(app: AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
     app.opener()

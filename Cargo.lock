@@ -1918,12 +1918,17 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64 0.22.1",
  "chrono",
  "frostfire-proto",
+ "frostfire-security",
  "frostfire-tunnel",
  "regex",
+ "ring",
+ "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "subtle",
  "thiserror 2.0.20",
  "tokio",
@@ -2016,11 +2021,13 @@ dependencies = [
 name = "frostfireOS-tauri"
 version = "0.3.0"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "dirs 5.0.1",
  "frostfire-core",
  "frostfire-engine",
  "frostfire-exec",
+ "frostfire-gateway",
  "frostfire-proto",
  "frostfire-tunnel",
  "keyring",
