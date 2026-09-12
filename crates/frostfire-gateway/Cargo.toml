@@ -25,3 +25,7 @@ rusqlite = { workspace = true }
 ring = "0.17"
 base64 = "0.22"
 sha2 = { workspace = true }
+
+[dev-dependencies]
+frostfire-engine = { workspace = true }
+frostfire-core = { workspace = true }

@@ -1920,6 +1920,8 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
+ "frostfire-core",
+ "frostfire-engine",
  "frostfire-proto",
  "frostfire-security",
  "frostfire-tunnel",
