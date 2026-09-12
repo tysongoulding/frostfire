@@ -1920,6 +1920,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
+ "clap",
  "frostfire-core",
  "frostfire-engine",
  "frostfire-proto",
@@ -1934,8 +1935,10 @@ dependencies = [
  "subtle",
  "thiserror 2.0.20",
  "tokio",
+ "tokio-stream",
  "tonic",
  "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 

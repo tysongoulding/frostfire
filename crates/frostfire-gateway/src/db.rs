@@ -99,6 +99,15 @@ impl AccountDatabase {
         Ok(())
     }
 
+    /// Returns the total count of registered accounts.
+    pub fn count_accounts(&self) -> Result<usize, GatewayError> {
+        let conn = self.conn.lock().unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM accounts", [], |row| row.get(0))
+            .map_err(|e| GatewayError::DatabaseError(format!("Count accounts error: {e}")))?;
+        Ok(count as usize)
+    }
+
     /// Upserts a user account.
     pub fn upsert_account(&self, account: &UserAccount) -> Result<(), GatewayError> {
         let conn = self.conn.lock().unwrap();

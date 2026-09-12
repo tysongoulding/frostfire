@@ -113,4 +113,30 @@ impl IngressTunnelBroker {
         }
         dead
     }
+
+    /// Removes a specific tunnel session.
+    pub async fn remove_tunnel(&self, session_id: &str) {
+        let mut guard = self.tunnels.write().await;
+        guard.remove(session_id);
+    }
+
+    /// Clears all active tunnel sessions.
+    pub async fn clear_all_tunnels(&self) {
+        let mut guard = self.tunnels.write().await;
+        guard.clear();
+    }
+
+    /// Returns the number of currently active reverse tunnel streams.
+    pub async fn active_tunnel_count(&self) -> usize {
+        self.tunnels.read().await.len()
+    }
+
+    /// Lists active session IDs and their corresponding tenant IDs.
+    pub async fn list_sessions(&self) -> Vec<(String, String)> {
+        let guard = self.tunnels.read().await;
+        guard
+            .values()
+            .map(|s| (s.tenant_id.clone(), s.session_id.clone()))
+            .collect()
+    }
 }
