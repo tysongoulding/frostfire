@@ -29,6 +29,14 @@ Execute applications using the verified system launchers:
 - **Non-blocking UI**: Background long-running processes using `&` or system services.
 
 ## Verification Gates
-Before reporting any operational task complete:
-1. Confirm the process is active (`pgrep -l <process>`).
-2. Verify screen state if GUI changed (`scrot -o /tmp/screen.png`).
+Before declaring any code modification complete:
+1. **Unit & Integration Suite**: `cargo test --workspace` (must pass all tests, 0 warnings).
+2. **Linter**: `cargo clippy --workspace -- -D warnings` (0 warnings).
+3. Confirm active processes (`pgrep -l <process>`).
+4. Verify screen state if GUI changed (`scrot -o /tmp/screen.png`).
+
+## Cloud & MicroVM Invariants
+- **Outbound-Only Ingress**: Cloud Gateway routes agents via reverse-stream `OpenTunnel`. Daemons connect outbound over TLS 1.3.
+- **MicroVM Isolation**: MicroVM instances run on isolated bridge networks (`172.16.x.0/24` or TAP `172.30.0.1/24`). Never bridge unauthenticated guest networks to the public internet.
+- **Tenant Authorization**: All display routes must pass `x-frostfire-window-owner` token checks with constant-time comparison (`timingSafeEqual`).
+- **Zero Secrets in Git**: Never commit AWS credentials, private keys, or API tokens.
