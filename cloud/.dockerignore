@@ -1,0 +1,10 @@
+target
+.git
+.agents
+poc
+deploy
+scripts
+*.tmp
+*.log
+*.png
+teamwork

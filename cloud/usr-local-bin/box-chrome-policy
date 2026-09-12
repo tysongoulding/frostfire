@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Owns Sand's Chrome managed-policy file (sand-webauthn.json): turns the
+# WebAuthn-proxy opt-in into a force-install policy entry for the proxy
+# extension WITHOUT ever disturbing what any other policy owner installs.
+#
+# Why this is its own key and not ExtensionInstallForcelist: Chrome resolves
+# the files in /etc/opt/chrome/policies/managed per POLICY KEY — when one key
+# appears in several files, the lexicographically last file wins that key
+# outright (lists are replaced, never concatenated), and an extension that
+# drops off the effective forcelist is UNINSTALLED, not merely skipped. So a
+# whole-file ExtensionInstallForcelist here force-uninstalled every extension
+# any OTHER owner force-installs (observed live: enabling the proxy evicted a
+# team-installed password manager whose policy file sorted before this one).
+# Writing the proxy entry under ExtensionSettings, keyed by the proxy's own
+# extension ID, leaves the forcelist key entirely to other owners: Chrome
+# merges per-extension ExtensionSettings entries with other files' forcelist
+# entries, so the two compose no matter which file lands first, last, or while
+# Chrome is already running (Chrome watches the policy dir and re-resolves
+# live, no restart). Deliberately NOT a snapshot-merge of sibling files into
+# one list: a snapshot goes stale the moment another owner writes later, and
+# copying their entries would keep force-installing an extension its owner
+# has since removed. Known residual conflict: a sibling file that also writes
+# the ExtensionSettings KEY collides with this one under the same
+# last-file-wins rule — no other owner on the box writes it today.
+set -u
+
+policy_file="${SAND_WEBAUTHN_POLICY_FILE:-/etc/opt/chrome/policies/managed/sand-webauthn.json}"
+id_file="${SAND_WEBAUTHN_ID_FILE:-/usr/local/share/sand-webauthn-proxy.id}"
+marker="${SAND_WEBAUTHN_MARKER_FILE:-/home/box/.sand-webauthn-proxy-enabled}"
+update_xml="${SAND_WEBAUTHN_UPDATE_XML:-/usr/local/share/sand-webauthn-proxy-update.xml}"
+
+case "${SAND_WEBAUTHN_PROXY:-}" in
+	1) : >"${marker}" 2>/dev/null || true ;;
+	0) rm -f "${marker}" 2>/dev/null || true ;;
+esac
+
+if [ ! -w "${policy_file}" ]; then
+	exit 0
+fi
+
+if [ -f "${marker}" ] && [ -r "${id_file}" ]; then
+	printf '{"ExtensionSettings":{"%s":{"installation_mode":"force_installed","update_url":"file://%s"}}}\n' \
+		"$(cat "${id_file}")" "${update_xml}" >"${policy_file}"
+else
+	printf '{}\n' >"${policy_file}"
+fi

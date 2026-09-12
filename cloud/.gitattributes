@@ -1,0 +1,13 @@
+# Enforce LF endings on shell scripts, configs, and Dockerfiles
+*.sh text eol=lf
+*.bash text eol=lf
+Dockerfile* text eol=lf
+*.mjs text eol=lf
+*.js text eol=lf
+*.py text eol=lf
+*.tint2rc text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.proto text eol=lf
+sand-exit-watch text eol=lf
+init-overlay text eol=lf

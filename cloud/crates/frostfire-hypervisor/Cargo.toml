@@ -1,0 +1,21 @@
+[package]
+name = "frostfire-hypervisor"
+version = "0.1.0"
+edition = "2021"
+description = "Frostfire Firecracker MicroVM Hypervisor Daemon for User-Hosted VM"
+
+[dependencies]
+tokio = { version = "1.38", features = ["full", "process"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[target.'cfg(unix)'.dependencies]
+hyper = { version = "0.14", features = ["client", "http1"] }
+hyper-unix-connector = "0.2"
+nix = { version = "0.27", features = ["net", "fs"] }
+
+[dev-dependencies]
+tokio-test = "0.4"

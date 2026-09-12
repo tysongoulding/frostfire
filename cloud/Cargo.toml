@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/frostfire-hypervisor",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Tyson Goulding <tyson.goulding@optconnect.com>"]
+license = "Proprietary"
+repository = "https://github.com/tysongoulding/frostfire-cloud"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
