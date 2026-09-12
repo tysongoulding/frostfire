@@ -35,6 +35,7 @@ pub struct AppState {
     pub tunnel_handle: Arc<RwLock<Option<TunnelHandle>>>,
     pub recent_remote_hashes: Arc<RwLock<HashSet<String>>>,
     pub cloud_server_url: String,
+    pub permissions: Arc<crate::permissions::HostPermissionEngine>,
 }
 
 #[tauri::command]
@@ -71,21 +72,36 @@ pub async fn evaluate_host_security(
     action: crate::permissions::HostSecurityAction,
     state: tauri::State<'_, AppState>,
 ) -> Result<crate::permissions::HostPermissionDecision, String> {
-    let workspace_root = std::env::current_dir().unwrap_or_else(|_| state.paths.app_data_dir.clone());
-    let engine = crate::permissions::HostPermissionEngine::new(workspace_root);
-    Ok(engine.evaluate(&action).await)
+    Ok(state.permissions.evaluate(&action).await)
 }
 
 #[tauri::command]
 pub async fn submit_host_security_decision(
     request_id: String,
     approved: bool,
-    grant_always: bool,
+    grant_session: bool,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    let workspace_root = std::env::current_dir().unwrap_or_else(|_| state.paths.app_data_dir.clone());
-    let engine = crate::permissions::HostPermissionEngine::new(workspace_root);
-    engine.submit_decision(&request_id, approved, grant_always).await.map(|_| ())
+    state
+        .permissions
+        .submit_decision(&request_id, approved, grant_session)
+        .await
+        .map(|_| ())
+}
+
+#[tauri::command]
+pub async fn list_active_session_grants(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<crate::permissions::SessionGrantInfo>, String> {
+    Ok(state.permissions.list_session_grants().await)
+}
+
+#[tauri::command]
+pub async fn revoke_session_grant(
+    grant_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<bool, String> {
+    Ok(state.permissions.revoke_session_grant(&grant_id).await)
 }
 
 #[tauri::command]

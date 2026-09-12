@@ -68,16 +68,29 @@ fn test_permission_classifier_tier2_modal_approval() {
         engine.classify(&HostSecurityAction::ClipboardWrite),
         PermissionTier::Tier2ModalApprovalRequired
     );
+    let outside_shell = if cfg!(windows) {
+        "D:\\Tools\\custom.exe".to_string()
+    } else {
+        "/opt/custom/tool".to_string()
+    };
     assert_eq!(
         engine.classify(&HostSecurityAction::ShellExecution {
-            command: "cargo test".to_string()
+            command: outside_shell,
+            cwd: None,
         }),
         PermissionTier::Tier2ModalApprovalRequired
     );
 
-    let inside_path = workspace.join("Cargo.toml").to_string_lossy().to_string();
+    let outside_path = if cfg!(windows) {
+        "D:\\Other\\Cargo.toml".to_string()
+    } else {
+        "/tmp/outside/Cargo.toml".to_string()
+    };
     assert_eq!(
-        engine.classify(&HostSecurityAction::FileWrite { path: inside_path }),
+        engine.classify(&HostSecurityAction::FileWrite {
+            path: outside_path,
+            content_len: None
+        }),
         PermissionTier::Tier2ModalApprovalRequired
     );
 }
@@ -95,7 +108,8 @@ fn test_permission_classifier_tier3_blocked() {
     );
     assert_eq!(
         engine.classify(&HostSecurityAction::FileWrite {
-            path: "C:\\Windows\\System32\\drivers\\etc\\hosts".to_string()
+            path: "C:\\Windows\\System32\\drivers\\etc\\hosts".to_string(),
+            content_len: None,
         }),
         PermissionTier::Tier3Blocked
     );
@@ -108,7 +122,8 @@ fn test_permission_classifier_tier3_blocked() {
     );
     assert_eq!(
         engine.classify(&HostSecurityAction::ShellExecution {
-            command: "rm -rf / --no-preserve-root".to_string()
+            command: "rm -rf / --no-preserve-root".to_string(),
+            cwd: None,
         }),
         PermissionTier::Tier3Blocked
     );
@@ -145,6 +160,7 @@ async fn test_permission_evaluation_and_approval_workflow() {
     // Test rejection
     let shell_action = HostSecurityAction::ShellExecution {
         command: "cat /etc/passwd".to_string(),
+        cwd: None,
     };
     let shell_decision = engine.evaluate(&shell_action).await;
     if let HostPermissionDecision::ApprovalRequired { request_id, .. } = shell_decision {

@@ -1,9 +1,9 @@
 import React from 'react';
-import { ShieldAlert, CheckCircle2, XCircle, Terminal, FileCode2, Globe } from 'lucide-react';
+import { ShieldAlert, CheckCircle2, XCircle, Terminal, FileCode2, Globe, KeyRound } from 'lucide-react';
 
 export interface HitlRequest {
   requestId: string;
-  actionType: 'shell_execution' | 'file_mutation' | 'network_egress';
+  actionType: 'shell_execution' | 'file_mutation' | 'network_egress' | 'secret_access';
   description: string;
   detailsJson: string;
   requestedBy: string;
@@ -29,18 +29,22 @@ export const HitlApprovalCard: React.FC<HitlApprovalCardProps> = ({
         return <FileCode2 className="w-5 h-5 text-blue-400" />;
       case 'network_egress':
         return <Globe className="w-5 h-5 text-purple-400" />;
+      case 'secret_access':
+        return <KeyRound className="w-5 h-5 text-red-400" />;
       default:
         return <ShieldAlert className="w-5 h-5 text-amber-400" />;
     }
   };
 
+  const isSecret = request.actionType === 'secret_access';
+
   return (
-    <div className="bg-zinc-900/90 border border-amber-500/30 rounded-xl p-4 my-3 shadow-lg shadow-amber-500/5 backdrop-blur-sm">
+    <div className={`bg-zinc-900/90 border ${isSecret ? 'border-red-500/40 shadow-red-500/5' : 'border-amber-500/30 shadow-amber-500/5'} rounded-xl p-4 my-3 shadow-lg backdrop-blur-sm`}>
       <div className="flex items-center justify-between gap-3 mb-2">
         <div className="flex items-center gap-2">
           {getIcon()}
-          <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">
-            Permission Required (HITL)
+          <span className={`text-xs font-semibold uppercase tracking-wider ${isSecret ? 'text-red-400' : 'text-amber-400'}`}>
+            {isSecret ? 'Secret Shield Required' : 'Permission Required (HITL)'}
           </span>
         </div>
         <span className="text-[10px] text-zinc-500">

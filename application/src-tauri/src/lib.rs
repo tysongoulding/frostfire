@@ -16,11 +16,13 @@ use commands::{
     execute_command, execute_remote_cloud_command, fetch_all_provider_models, fetch_provider_models,
     get_blackboard_manifest, get_blackboard_presentation, get_cached_models, get_cloud_agents,
     get_dag_state, get_dynamic_screen_context, get_prompt_config, get_saved_auth_keys,
-    get_tunnel_status, list_agent_sessions, load_lota_settings, minimize_window, open_external_url,
-    open_local_path, respond_hitl_approval, save_custom_prompt, save_lota_settings, search_web,
-    send_agent_turn, send_rpc_command, set_display_takeover, start_drag_window, start_oauth_login,
-    submit_host_security_decision, sync_provider_keys, test_provider_key, toggle_maximize_window,
-    trigger_teach_session, update_dag_task_status, verify_invariants, AppState,
+    get_tunnel_status, list_active_session_grants, list_agent_sessions, load_lota_settings,
+    minimize_window, open_external_url, open_local_path,
+    respond_hitl_approval, revoke_session_grant, save_custom_prompt, save_lota_settings,
+    search_web, send_agent_turn, send_rpc_command, set_display_takeover, start_drag_window,
+    start_oauth_login, submit_host_security_decision, sync_provider_keys, test_provider_key,
+    toggle_maximize_window, trigger_teach_session, update_dag_task_status, verify_invariants,
+    AppState,
 };
 use frostfire_core::blackboard::BlackboardStore;
 use frostfire_core::dag::WorkstreamDag;
@@ -69,6 +71,9 @@ pub fn run() {
     let recent_remote_hashes = Arc::new(RwLock::new(HashSet::<String>::new()));
     let tunnel_handle_arc = Arc::new(RwLock::new(Some(tunnel_handle)));
 
+    let workspace_root = std::env::current_dir().unwrap_or_else(|_| paths.app_data_dir.clone());
+    let permissions = Arc::new(permissions::HostPermissionEngine::new(workspace_root));
+
     let app_state = AppState {
         paths,
         keystore,
@@ -81,6 +86,7 @@ pub fn run() {
         tunnel_handle: tunnel_handle_arc.clone(),
         recent_remote_hashes: recent_remote_hashes.clone(),
         cloud_server_url: server_url.clone(),
+        permissions,
     };
 
     tauri::Builder::default()
@@ -263,6 +269,8 @@ pub fn run() {
             get_dynamic_screen_context,
             evaluate_host_security,
             submit_host_security_decision,
+            list_active_session_grants,
+            revoke_session_grant,
         ])
         .run(tauri::generate_context!())
         .expect("error while running frostfireOS desktop application");
