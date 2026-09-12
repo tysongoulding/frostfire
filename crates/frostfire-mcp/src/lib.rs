@@ -1,6 +1,7 @@
 //! Frostfire MCP: Model Context Protocol supervisor, tool allowlist proxy, and JSON-RPC bridge.
 
 pub mod protocol;
+pub mod proxmox;
 pub mod proxy;
 pub mod supervisor;
 
@@ -9,6 +10,8 @@ pub use protocol::{
     INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR, REQUEST_TIMEOUT,
     TOOL_FORBIDDEN,
 };
+
+pub use proxmox::{HttpPveTransport, ProxmoxConfig, ProxmoxMcpServer, PveApiTransport};
 
 pub use proxy::{CircuitBreaker, CircuitBreakerConfig, CircuitState, McpProxy, ToolAllowlist};
 
