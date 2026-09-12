@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef } from "react";
 import { MessageItem as MessageItemType } from "../../store/sessionStore";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { ToolActionCard } from "../cards/ToolActionCard";
+import { HitlApprovalCard } from "../hitl/HitlApprovalCard";
 import { CodeBlock } from "./CodeBlock";
 import { MermaidViewer } from "../diagrams/MermaidViewer";
 import Markdown from "react-markdown";
@@ -309,6 +310,31 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
           </button>
         </div>
+      </div>
+    );
+  }
+
+  // HITL / Host Security approval cards
+  if (message.hitlRequest) {
+    return (
+      <div className="my-2 max-w-full">
+        <HitlApprovalCard
+          request={message.hitlRequest}
+          onApprove={(requestId, allowAlways) => {
+            invoke("submit_host_security_decision", {
+              requestId,
+              approved: true,
+              grantAlways: allowAlways,
+            }).catch((err) => console.error("Approval submit error:", err));
+          }}
+          onDeny={(requestId) => {
+            invoke("submit_host_security_decision", {
+              requestId,
+              approved: false,
+              grantAlways: false,
+            }).catch((err) => console.error("Deny submit error:", err));
+          }}
+        />
       </div>
     );
   }

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { RpcEvent } from "../lib/protocol";
+import { HitlRequest } from "../components/hitl/HitlApprovalCard";
 
 export type TurnPhase =
   | "idle"
@@ -24,6 +25,7 @@ export interface MessageItem {
   content: string;
   reasoning?: string;
   toolCall?: ToolCallData;
+  hitlRequest?: HitlRequest;
 }
 
 export interface SessionInfo {

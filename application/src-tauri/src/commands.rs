@@ -62,6 +62,33 @@ pub async fn close_window(window: Window) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn get_dynamic_screen_context() -> Result<crate::screen_context::ScreenContextInfo, String> {
+    Ok(crate::screen_context::ScreenContextInfo::capture_current())
+}
+
+#[tauri::command]
+pub async fn evaluate_host_security(
+    action: crate::permissions::HostSecurityAction,
+    state: tauri::State<'_, AppState>,
+) -> Result<crate::permissions::HostPermissionDecision, String> {
+    let workspace_root = std::env::current_dir().unwrap_or_else(|_| state.paths.app_data_dir.clone());
+    let engine = crate::permissions::HostPermissionEngine::new(workspace_root);
+    Ok(engine.evaluate(&action).await)
+}
+
+#[tauri::command]
+pub async fn submit_host_security_decision(
+    request_id: String,
+    approved: bool,
+    grant_always: bool,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let workspace_root = std::env::current_dir().unwrap_or_else(|_| state.paths.app_data_dir.clone());
+    let engine = crate::permissions::HostPermissionEngine::new(workspace_root);
+    engine.submit_decision(&request_id, approved, grant_always).await.map(|_| ())
+}
+
+#[tauri::command]
 pub async fn open_local_path(app: AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
     app.opener()

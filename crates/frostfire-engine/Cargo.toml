@@ -8,6 +8,8 @@ license.workspace = true
 [dependencies]
 frostfire-core = { path = "../frostfire-core" }
 frostfire-proto = { path = "../frostfire-proto" }
+frostfire-exec = { workspace = true }
+async-trait = { workspace = true }
 rig-core = "0.42.0"
 schemars = "0.8"
 serde.workspace = true

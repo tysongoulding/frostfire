@@ -1,3 +1,5 @@
+pub mod agent_loop;
+pub mod compaction;
 pub mod gemini;
 pub mod providers;
 pub mod resilience;
@@ -6,6 +8,11 @@ pub mod security;
 pub mod tools;
 pub mod turn;
 
+pub use agent_loop::{
+    AgentLoopState, AgentLoopSummary, EngineCompletionModel, ModelTurnResult,
+    ProgrammaticVerifier, RigAgentConfig, RigAgentLoop, VerifierResult,
+};
+pub use compaction::{CompactionController, CompactionRequest, CompactionResponse};
 pub use gemini::{ChatMessage, GeminiClient, GeminiConfig, GeminiToolCall, GeminiTurnResult};
 pub use providers::{ProviderCredentials, ProviderRegistry, ProviderType};
 pub use resilience::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError, CircuitState};

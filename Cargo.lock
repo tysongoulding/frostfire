@@ -1877,8 +1877,10 @@ name = "frostfire-engine"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "chrono",
  "frostfire-core",
+ "frostfire-exec",
  "frostfire-proto",
  "rand 0.8.8",
  "reqwest 0.12.28",
@@ -1906,6 +1908,26 @@ dependencies = [
  "similar",
  "thiserror 2.0.20",
  "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "frostfire-gateway"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "frostfire-proto",
+ "frostfire-tunnel",
+ "regex",
+ "serde",
+ "serde_json",
+ "subtle",
+ "thiserror 2.0.20",
+ "tokio",
+ "tonic",
  "tracing",
  "uuid",
 ]
@@ -1998,6 +2020,7 @@ dependencies = [
  "dirs 5.0.1",
  "frostfire-core",
  "frostfire-engine",
+ "frostfire-exec",
  "frostfire-proto",
  "frostfire-tunnel",
  "keyring",

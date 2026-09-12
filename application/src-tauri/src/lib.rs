@@ -2,7 +2,9 @@ pub mod commands;
 pub mod keystore;
 pub mod oauth;
 pub mod paths;
+pub mod permissions;
 pub mod protocol;
+pub mod screen_context;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -10,15 +12,15 @@ use tauri::Emitter;
 use tokio::sync::RwLock;
 
 use commands::{
-    close_window, create_agent_session, delete_agent_session, execute_command,
-    execute_remote_cloud_command, fetch_all_provider_models, fetch_provider_models,
+    close_window, create_agent_session, delete_agent_session, evaluate_host_security,
+    execute_command, execute_remote_cloud_command, fetch_all_provider_models, fetch_provider_models,
     get_blackboard_manifest, get_blackboard_presentation, get_cached_models, get_cloud_agents,
-    get_dag_state, get_prompt_config, get_saved_auth_keys, get_tunnel_status, list_agent_sessions,
-    load_lota_settings, minimize_window, open_external_url, open_local_path,
-    respond_hitl_approval, save_custom_prompt, save_lota_settings, search_web, send_agent_turn,
-    send_rpc_command, set_display_takeover, start_drag_window, start_oauth_login,
-    sync_provider_keys, test_provider_key, toggle_maximize_window, trigger_teach_session,
-    update_dag_task_status, verify_invariants, AppState,
+    get_dag_state, get_dynamic_screen_context, get_prompt_config, get_saved_auth_keys,
+    get_tunnel_status, list_agent_sessions, load_lota_settings, minimize_window, open_external_url,
+    open_local_path, respond_hitl_approval, save_custom_prompt, save_lota_settings, search_web,
+    send_agent_turn, send_rpc_command, set_display_takeover, start_drag_window, start_oauth_login,
+    submit_host_security_decision, sync_provider_keys, test_provider_key, toggle_maximize_window,
+    trigger_teach_session, update_dag_task_status, verify_invariants, AppState,
 };
 use frostfire_core::blackboard::BlackboardStore;
 use frostfire_core::dag::WorkstreamDag;
@@ -258,6 +260,9 @@ pub fn run() {
             get_tunnel_status,
             get_dag_state,
             update_dag_task_status,
+            get_dynamic_screen_context,
+            evaluate_host_security,
+            submit_host_security_decision,
         ])
         .run(tauri::generate_context!())
         .expect("error while running frostfireOS desktop application");
