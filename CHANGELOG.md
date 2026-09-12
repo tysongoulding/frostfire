@@ -1,0 +1,55 @@
+# Changelog
+
+## [0.3.1](https://github.com/tysongoulding/frostfire/compare/v0.3.0...v0.3.1) (2026-09-12)
+
+
+### Features
+
+* **agent:** configure slot 1 Claude 3.7 Sonnet screen capture and polish ScreenView UI ([ccf41b4](https://github.com/tysongoulding/frostfire/commit/ccf41b4013aa55f00dcc1562d0dbc612bcabc01f))
+* **agent:** load AGENTS.md / SYSTEM.md directives, enable multi-turn memory, and dynamic persona dispatch ([92e8999](https://github.com/tysongoulding/frostfire/commit/92e8999612f0bc0a5ac22887e1bd77fe709fa7c7))
+* **billing:** implement production user UUID authority, Stripe metered billing, Ed25519 license tokens, and questions.md ([3cbcdc3](https://github.com/tysongoulding/frostfire/commit/3cbcdc3442ac29cbbac1286697cb0a195d51b041))
+* **cloud:** initialize Frostfire Cloud private repository ([a3fe505](https://github.com/tysongoulding/frostfire/commit/a3fe5054d107d1418bc255b42fb3ab6fbfe23aab))
+* complete Area 2 Gateway, Area 1 Agent Core, and Area 3 Desktop rails with tests ([208298d](https://github.com/tysongoulding/frostfire/commit/208298d96a0824fe5c191c48dae85d7fdb798ebc))
+* **core:** initialize Frostfire OS monorepo ([988ab61](https://github.com/tysongoulding/frostfire/commit/988ab61d308819ceed355c0701ae611ced05918b))
+* **deploy:** associate persistent Elastic IP, add firefrost prompt, and configure auto-start systemd services ([eb43682](https://github.com/tysongoulding/frostfire/commit/eb43682a5d47edc54fd604af22f70ada45ac50f4))
+* dynamic gateway ingress resolution and JIT auto-wake in client ([1340d2e](https://github.com/tysongoulding/frostfire/commit/1340d2e24bff7b343862aea6459c4139811ca1d7))
+* **exec:** add /agent/turn endpoint with AGENTS.md profile awareness on port 1339 ([b2110b8](https://github.com/tysongoulding/frostfire/commit/b2110b87a58e4cb06bf2e956dae3df49179a7cb9))
+* **gateway:** add standalone daemon binary and turnkey Proxmox VE LXC installer automation ([3a63dc0](https://github.com/tysongoulding/frostfire/commit/3a63dc0a6cf79647a8a8a6a20740c4d4552e9a77))
+* **mcp:** add native Proxmox VE MCP server implementation and stdio binary ([c7fc673](https://github.com/tysongoulding/frostfire/commit/c7fc673f906580d8bb225ce5ddcf53e4372988fc))
+* **poc:** complete phase 1 user-hosted vm aws infrastructure, hypervisor, and verification suite ([5852342](https://github.com/tysongoulding/frostfire/commit/5852342c3620a2e252733fe640e488fd597dbbaa))
+* **poc:** initialize frostfire user-hosted vm infrastructure for aws ([8ffdd89](https://github.com/tysongoulding/frostfire/commit/8ffdd894edd1e91c63db840044104856fcbd2138))
+* **production:** multi-platform CI/CD, zero-mock cloud wiring, and GrokBot parity ([c06c273](https://github.com/tysongoulding/frostfire/commit/c06c273a0e70304e8806e0416969424fc106727b))
+* **prompt:** install Frostfire autonomous agent operating system main prompt and Bedrock multi-model cascade ([9692227](https://github.com/tysongoulding/frostfire/commit/96922272ce627b51e9eba640d060973b68c3fe1e))
+* **prompt:** sync Frostfire main prompt, operating summary, and momentum queues ([db0ecf4](https://github.com/tysongoulding/frostfire/commit/db0ecf4e2c820b45f943c377278285c657cf0aa8))
+* **repo:** separate cloud infrastructure into private frostfire-cloud repository ([62d6175](https://github.com/tysongoulding/frostfire/commit/62d61753c1a7ace229e95026d5760f00090fc3ef))
+* **screen:** add centered morphing Loading indicator matching LLM Working style ([9103b40](https://github.com/tysongoulding/frostfire/commit/9103b406bea402d91f9c46cedd7e1ba17c49df8a))
+* **screen:** borderless full-bleed theme view, larger Ubuntu font, and seamless dock styling ([6308f04](https://github.com/tysongoulding/frostfire/commit/6308f045e7bb6836f2cbaffdc1da3dd8ea32528a))
+* **screen:** stream kill on panel hide, live preview on exit to chat, and persistent EIP 44.242.94.86 resolution ([2f66e21](https://github.com/tysongoulding/frostfire/commit/2f66e2175b36cb9efb6527a19476282dfae56db1))
+* **security:** implement local desktop permissions engine with secret shield and tests ([449d443](https://github.com/tysongoulding/frostfire/commit/449d443c1a2ffcb6020ed9ffc1ca81673c79c013))
+* **skills:** install GrokBot managed skills library ([a8cb5f7](https://github.com/tysongoulding/frostfire/commit/a8cb5f7cd771b480fda90393a7a26456f18784b6))
+* **skills:** install GrokBot managed skills library ([1c1b248](https://github.com/tysongoulding/frostfire/commit/1c1b24868471513307b24e135c3c0740d685a670))
+* **ui:** add animated FrostFire gradient shimmer to Working.... indicator ([d6687ce](https://github.com/tysongoulding/frostfire/commit/d6687ce2789c6e3fc0259a9a4a55bac74c3e12e8))
+* **ui:** add top-left floating exit button to return to chat ([39b7649](https://github.com/tysongoulding/frostfire/commit/39b7649c8eeafa2ebbc3d464b805b4de8edff0cc))
+* **ui:** display theme-aware single dot (red or blue) on menu bar and top bar when idle ([33abce6](https://github.com/tysongoulding/frostfire/commit/33abce6865f021d394afb83d217d574a9b564260))
+* **ui:** display User1, user2, user3 in settings dropup and set right sidepanel closed by default ([b6b6048](https://github.com/tysongoulding/frostfire/commit/b6b60487f7ad0237c48941d11438d6e2cc225bce))
+* **ui:** pulse Working text and morph Flame to Snowflake strictly with App Blue and Red tokens ([d4f0998](https://github.com/tysongoulding/frostfire/commit/d4f0998ed1691534a099ff809523517872b64490))
+* **ui:** synchronize 2.6s Fire/Frost shift rhythm across top bar, menu bar, and chat area ([0e4111d](https://github.com/tysongoulding/frostfire/commit/0e4111dd539264499629f9211635ebcf6df12b3a))
+* **ui:** update user emails to frostfire.cloud, remove Cloud VM settings tab, and rename Bots to Agents in Marketplace ([ffea7a5](https://github.com/tysongoulding/frostfire/commit/ffea7a50c70f28fe0547bc497a40accb963f87e6))
+* **workspace:** unify frostfire-cloud into monorepo with frostfire-hypervisor crate ([4c556ef](https://github.com/tysongoulding/frostfire/commit/4c556efcc387824f367696cebc04e03bee57599e))
+
+
+### Bug Fixes
+
+* **agent:** support large system prompt via temp file and UTF-8 encoding in bedrock converse ([84f5bb9](https://github.com/tysongoulding/frostfire/commit/84f5bb93811ec472a81203d87db2028182ad7fd7))
+* **bedrock:** pass large system prompt and messages via temp file to bypass Windows 32KB CLI limit ([1f1df82](https://github.com/tysongoulding/frostfire/commit/1f1df8207031d009bcc3c2e919efb1898c835a1b))
+* **deploy:** include thunar and feh desktop packages and configure wallpaper auto-load on display startup ([a9caa7a](https://github.com/tysongoulding/frostfire/commit/a9caa7a84b0ef0a93327d1c9220d6b8fff28e687))
+* **deploy:** use LaunchTemplate for Spot market options and add exit code verification ([f49bd54](https://github.com/tysongoulding/frostfire/commit/f49bd546980107966224290a0665e7e265059ca5))
+* **frontend:** connect browser fallback directly to cloud /agent/turn API ([184d5e0](https://github.com/tysongoulding/frostfire/commit/184d5e0d5d0dee1aeeae25db7e2b18c798f2411e))
+* **microvm:** purge stale X locks and display sockets on boot ([b910591](https://github.com/tysongoulding/frostfire/commit/b9105918c01253d1610fa054b64c192c8f020bb0))
+* **router:** broaden google messages recognition to handle natural queries ([9fcb2a4](https://github.com/tysongoulding/frostfire/commit/9fcb2a46b8278cf8e072d991d21bbc19e76826ae))
+* **ui:** keep only rotating Fire/Frost morph on right for menu bar items ([a96fc95](https://github.com/tysongoulding/frostfire/commit/a96fc95bce6174695b4e0fc9a8320826ee9e40ca))
+* **ui:** remove worked for 18s, tool call badges, and cloud desktop label from chat ([b4a6616](https://github.com/tysongoulding/frostfire/commit/b4a661666f78f41b0d18912d0b1066fa3d6c31c9))
+* **ui:** show name and Title/Role or last message on AI menu and remove display tags ([fa2aac8](https://github.com/tysongoulding/frostfire/commit/fa2aac866955f296cd002b3caa854e373673f9d0))
+* **vnc:** bust iframe cache and disable cursor dot ([884e368](https://github.com/tysongoulding/frostfire/commit/884e3685a8e78f8788100bf3355c4ec087e31b19))
+* **vnc:** enable auto-scaling to viewport and update host endpoints ([24e19fd](https://github.com/tysongoulding/frostfire/commit/24e19fddd5f001655a449787911b78d94f0a2433))
+* **vnc:** restore clean vnc url parameters ([0da5608](https://github.com/tysongoulding/frostfire/commit/0da56087cefcb9d2e952bd1afc827526c7202050))
