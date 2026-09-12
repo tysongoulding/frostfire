@@ -21,16 +21,5 @@ dist/
 target/
 
 # Teamwork subagent artifacts
-.agents/auditor_*
-.agents/challenger_*
-.agents/explorer_*
-.agents/reviewer_*
-.agents/worker_*
-.agents/sentinel/
-.agents/orchestrator/
-.agents/test_writer/
-.agents/ORIGINAL_REQUEST.md
-.agents/PROJECT.md
-.agents/TEST_INFRA.md
-.agents/TEST_READY.md
+.agents/
 TEST_READY.md
