@@ -1,0 +1,295 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Frostfire Central Cloud Gateway (Area 2): Outbound-Only OpenTunnel Broker, SaaS Metering & LLM Router on EC2 Spot'
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: t3.small
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t4g.micro
+      - t4g.small
+      - t4g.medium
+      - c6i.large
+    Description: 'EC2 instance type for running the Rust gateway and local Redis container (t3.small x86_64 or t4g.small Graviton recommended for testing).'
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: 'Name of an existing EC2 KeyPair to enable SSH access.'
+
+  AllowedCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: 'Allowed CIDR IP block for SSH (22), OpenTunnel Broker (50051), and HTTP/Webhooks (8080). Use your_ip/32 for security.'
+
+  VolumeSize:
+    Type: Number
+    Default: 20
+    MinValue: 15
+    MaxValue: 100
+    Description: 'Root EBS gp3 volume size in GB.'
+
+  GatewayPort:
+    Type: Number
+    Default: 50051
+    Description: 'Port for the Tonic gRPC / TLS 1.3 OpenTunnel reverse stream broker.'
+
+  HttpPort:
+    Type: Number
+    Default: 8080
+    Description: 'Port for the REST health check, status endpoint, and Stripe webhooks.'
+
+  Environment:
+    Type: String
+    Default: test
+    AllowedValues:
+      - test
+      - staging
+      - production
+    Description: 'Deployment environment tag.'
+
+Mappings:
+  ArchMapping:
+    t3.micro:
+      Arch: x86_64
+      AmiKey: amd64
+    t3.small:
+      Arch: x86_64
+      AmiKey: amd64
+    t3.medium:
+      Arch: x86_64
+      AmiKey: amd64
+    c6i.large:
+      Arch: x86_64
+      AmiKey: amd64
+    t4g.micro:
+      Arch: arm64
+      AmiKey: arm64
+    t4g.small:
+      Arch: arm64
+      AmiKey: arm64
+    t4g.medium:
+      Arch: arm64
+      AmiKey: arm64
+
+Resources:
+  GatewaySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Frostfire Central Cloud Gateway Security Group'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedCidr
+          Description: 'SSH management terminal access'
+        - IpProtocol: tcp
+          FromPort: !Ref GatewayPort
+          ToPort: !Ref GatewayPort
+          CidrIp: 0.0.0.0/0
+          Description: 'OpenTunnel bidirectional reverse stream broker (outbound-connected from microVMs)'
+        - IpProtocol: tcp
+          FromPort: !Ref HttpPort
+          ToPort: !Ref HttpPort
+          CidrIp: !Ref AllowedCidr
+          Description: 'HTTP health check, dashboard status, and Stripe webhooks'
+      Tags:
+        - Key: Name
+          Value: !Sub 'frostfire-gateway-sg-${Environment}'
+
+  GatewayIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: FrostfireGatewayCloudWatchAndSecrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                  - secretsmanager:GetSecretValue
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/frostfire/*'
+      Tags:
+        - Key: Name
+          Value: !Sub 'frostfire-gateway-role-${Environment}'
+
+  GatewayInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref GatewayIamRole
+
+  GatewayLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        InstanceMarketOptions:
+          MarketType: spot
+          SpotOptions:
+            SpotInstanceType: persistent
+            InstanceInterruptionBehavior: stop
+        BlockDeviceMappings:
+          - DeviceName: /dev/sda1
+            Ebs:
+              VolumeSize: !Ref VolumeSize
+              VolumeType: gp3
+              DeleteOnTermination: true
+              Encrypted: true
+
+  GatewayInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref GatewayLaunchTemplate
+        Version: !GetAtt GatewayLaunchTemplate.LatestVersionNumber
+      ImageId: '{{resolve:ssm:/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id}}'
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref GatewayInstanceProfile
+      SecurityGroupIds:
+        - !Ref GatewaySecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub 'frostfire-gateway-${Environment}'
+        - Key: Role
+          Value: cloud-gateway
+        - Key: Environment
+          Value: !Ref Environment
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          exec > >(tee /var/log/frostfire-gateway-bootstrap.log|logger -t user-data -s 2>/dev/console) 2>&1
+          echo "========================================================="
+          echo ">>> Bootstrapping Frostfire Central Gateway"
+          echo "========================================================="
+
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -y
+          apt-get install -y ca-certificates curl gnupg lsb-release jq git build-essential ufw
+
+          # 1. Install Docker Engine for Redis container
+          install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+          chmod a+r /etc/apt/keyrings/docker.asc
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
+          apt-get update -y
+          apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+          # 2. Launch local Redis for SaaS metering hot cache
+          echo ">>> Starting Redis container on 127.0.0.1:6379..."
+          docker run -d \
+            --name frostfire-redis \
+            --restart always \
+            -p 127.0.0.1:6379:6379 \
+            -v /var/lib/frostfire-redis:/data \
+            redis:7-alpine redis-server --appendonly yes
+
+          # 3. Setup Frostfire Gateway directories
+          mkdir -p /opt/frostfire/gateway /etc/frostfire
+          cat << 'EOF' > /etc/frostfire/gateway.env
+          RUST_LOG=info,frostfire_gateway=debug
+          REDIS_URL=redis://127.0.0.1:6379
+          GATEWAY_PORT=${GatewayPort}
+          HTTP_PORT=${HttpPort}
+          ENVIRONMENT=${Environment}
+          EOF
+
+          # 4. Install Rust toolchain for native compilation (or container deployment)
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source "$HOME/.cargo/env"
+
+          # 5. Create health check server script
+          cat << 'EOF' > /opt/frostfire/gateway/health_server.py
+          import http.server
+          import socketserver
+          import json
+          import subprocess
+
+          PORT = ${HttpPort}
+
+          class HealthHandler(http.server.SimpleHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path in ['/health', '/status']:
+                      try:
+                          redis_ping = subprocess.run(['docker', 'exec', 'frostfire-redis', 'redis-cli', 'ping'], capture_output=True, text=True)
+                          redis_ok = "PONG" in redis_ping.stdout
+                      except Exception:
+                          redis_ok = False
+
+                      status_code = 200 if redis_ok else 503
+                      payload = {
+                          "status": "healthy" if redis_ok else "degraded",
+                          "services": {
+                              "redis": "healthy" if redis_ok else "unhealthy",
+                              "gateway_port": ${GatewayPort},
+                              "protocol": "OpenTunnel/TLS1.3"
+                          }
+                      }
+                      self.send_response(status_code)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      self.wfile.write(json.dumps(payload).encode('utf-8'))
+                  else:
+                      self.send_response(404)
+                      self.end_headers()
+
+          with socketserver.TCPServer(("", PORT), HealthHandler) as httpd:
+              httpd.serve_forever()
+          EOF
+
+          # 6. Configure and start Systemd health service
+          cat << 'EOF' > /etc/systemd/system/frostfire-gateway-health.service
+          [Unit]
+          Description=Frostfire Gateway Health and Status Daemon
+          After=network.target docker.service
+
+          [Service]
+          Type=simple
+          User=root
+          WorkingDirectory=/opt/frostfire/gateway
+          ExecStart=/usr/bin/python3 /opt/frostfire/gateway/health_server.py
+          Restart=always
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          systemctl daemon-reload
+          systemctl enable --now frostfire-gateway-health.service
+
+          echo "========================================================="
+          echo ">>> Frostfire Gateway bootstrap completed successfully!"
+          echo "========================================================="
+
+Outputs:
+  GatewayInstanceId:
+    Description: 'Instance ID of the Central Gateway EC2 instance'
+    Value: !Ref GatewayInstance
+
+  GatewayPublicIp:
+    Description: 'Public IP address of the Central Cloud Gateway'
+    Value: !GetAtt GatewayInstance.PublicIp
+
+  OpenTunnelBrokerEndpoint:
+    Description: 'gRPC TLS 1.3 OpenTunnel reverse stream connection endpoint for MicroVMs'
+    Value: !Sub 'http://${GatewayInstance.PublicIp}:${GatewayPort}'
+
+  HealthCheckUrl:
+    Description: 'Health and status check URL'
+    Value: !Sub 'http://${GatewayInstance.PublicIp}:${HttpPort}/health'
