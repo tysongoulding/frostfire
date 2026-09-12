@@ -4,6 +4,8 @@
 
 Frostfire is a full-stack, local-first autonomous agent platform. It pairs a native cross-platform desktop interface (Tauri v2 + React) with an outbound-only cloud gateway, an intelligent multi-tier LLM router, and an isolated microVM sandbox runtime (Firecracker KVM / Linux 6.12 / Debian 13).
 
+> 📖 **Full System Architecture & Harness Specification:** See [docs/ARCHITECTURE_SPEC.md](docs/ARCHITECTURE_SPEC.md) for the authoritative design consensus across all three areas.
+
 ---
 
 ## 🏛️ Architecture: The Three Areas
